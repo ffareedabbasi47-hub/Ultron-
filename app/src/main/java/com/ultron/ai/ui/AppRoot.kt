@@ -54,6 +54,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.ultron.ai.ui.avatar.AvatarStudioScreen
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
@@ -96,7 +97,7 @@ private val menu = listOf(
     )),
     MenuGroup("AI Studio", listOf(
         MenuItem("AI Models / Provider", Routes.AI), MenuItem("Awaaz Studio", Routes.VOICE),
-        MenuItem("Avatar Studio / 3D Models", Routes.info("avatar"), "Available nahi"),
+        MenuItem("Avatar Studio / 3D Models", Routes.AVATAR, "Beta"),
         MenuItem("Download Center", Routes.info("downloads"), "Available nahi"),
         MenuItem("Web Search", Routes.info("websearch"), "Setup chahiye"),
     )),
@@ -161,6 +162,7 @@ fun AppRoot(settings: UltronSettings) {
                     composable(Routes.DIAG) { DiagnosticsScreen(back) }
                     composable(Routes.ABOUT) { AboutScreen(back) }
                     composable(Routes.AUTOMATION) { AutomationScreen(back) }
+                    composable(Routes.AVATAR) { AvatarStudioScreen(settings, back) }
                     composable(Routes.INFO, arguments = listOf(navArgument("id") { type = NavType.StringType })) { e ->
                         InfoScreen(e.arguments?.getString("id").orEmpty(), back)
                     }

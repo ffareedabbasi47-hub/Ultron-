@@ -35,6 +35,7 @@ object Routes {
     const val DIAG = "diag"
     const val ABOUT = "about"
     const val AUTOMATION = "automation"
+    const val AVATAR = "avatar"
     const val INFO = "info/{id}"
 
     fun chat(study: Boolean = false) = "chat?mode=${if (study) "study" else "chat"}"

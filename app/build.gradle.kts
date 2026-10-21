@@ -42,7 +42,6 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
-        freeCompilerArgs += listOf("-opt-in=androidx.compose.material3.ExperimentalMaterial3Api", "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi", "-opt-in=kotlinx.serialization.ExperimentalSerializationApi")
     }
     buildFeatures {
         compose = true
@@ -81,6 +80,8 @@ dependencies {
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.work.runtime)
+    // Serves bundled avatar page + imported GLB files to the WebView over a private https origin.
+    implementation(libs.androidx.webkit)
 
     // Encrypted local database (key wrapped by Android Keystore).
     implementation(libs.sqlcipher.android)

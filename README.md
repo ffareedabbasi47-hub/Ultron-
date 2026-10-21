@@ -84,6 +84,20 @@ Not declared: CAMERA, location, storage, accessibility, foreground service, over
 | Accessibility automation, PC↔Phone, QR scan, smart model routing, web search, Dream Journal | **Not built** |
 | Emergency SOS | **Not built** |
 
+## 3D avatar, custom models and live wallpaper
+
+| Piece | Where | Notes |
+|---|---|---|
+| Browser/WebView avatar | `app/src/main/assets/avatar/ultron-avatar.html` | Raw WebGL2, no libraries. Original procedural ULTRON bust + a GLB loader (embedded textures, base-colour + metallic/roughness maps, node transforms, auto-fit). No skeleton animation, no Draco/meshopt/KTX2, no normal maps. |
+| In-app view | `ui/avatar/AvatarView.kt`, `AvatarHero.kt` | Home screen shows it when an avatar other than the 2D core is selected; falls back to the core if it fails or Low performance is on. WebView is locked down (own https origin only, no file access, other requests answered 403). |
+| Avatar Studio | `ui/avatar/AvatarStudioScreen.kt` (menu → Avatar Studio) | Select avatar, import a `.glb` with the system picker, or download from an `https://` link with real progress/cancel. Files are validated (GLB header, declared length, 50 MB cap) and stored in app-private storage. |
+| Live wallpaper | `platform/wallpaper/UltronWallpaperService.kt` + `avatar/gl/AvatarGlRenderer.kt` | Native OpenGL ES 3.0 port of the built-in avatar (no MSAA/bloom, ~30 fps, renders only while visible). Built-in model only. |
+| Pure-Kotlin core | `avatar/{Mat4,Geometry,UltronScene}.kt` | Unit-tested on the JVM (`AvatarTest`). |
+
+Not verified: nothing in the Android layer (WebView embedding, GLSurfaceView wallpaper, downloads) has run on a device or emulator.
+There is deliberately **no model catalog**: licences are the user's responsibility (CC0 / CC-BY / own work); ripped film/game models must not be used.
+Standalone viewer: open `ultron-avatar.html` in a browser (⚙ opens the controls; `?embed=1` hides them).
+
 ## Known limitations / next steps
 1. Build, fix compile issues, add Compose UI + instrumentation tests.
 2. TTS voice quality depends on device engines; Hinglish in Latin script is read by an `en-IN` voice.

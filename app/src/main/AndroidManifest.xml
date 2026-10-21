@@ -15,6 +15,10 @@
       QUERY_ALL_PACKAGES or storage permission is declared: none is used in this build.
     -->
 
+    <!-- Optional: only used if the user sets the ULTRON live wallpaper. -->
+    <uses-feature android:name="android.software.live_wallpaper" android:required="false" />
+    <uses-feature android:glEsVersion="0x00030000" android:required="false" />
+
     <queries>
         <!-- Launchable apps (for "open <app>" by name) -->
         <intent>
@@ -53,6 +57,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Live wallpaper (built-in 3D avatar). Binding is system-only; no extra permission is requested. -->
+        <service
+            android:name=".platform.wallpaper.UltronWallpaperService"
+            android:exported="true"
+            android:label="@string/wallpaper_label"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/ultron_wallpaper" />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

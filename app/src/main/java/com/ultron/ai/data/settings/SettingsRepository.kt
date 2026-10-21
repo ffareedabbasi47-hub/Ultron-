@@ -32,6 +32,8 @@ data class UltronSettings(
     val theme: ThemeVariant = ThemeVariant.PURPLE,
     val reducedMotion: Boolean = false,
     val lowPerformance: Boolean = false,
+    /** "core" (2D animated core), "ultron3d" (built-in 3D avatar) or "custom:<file>.glb". */
+    val avatarId: String = "core",
 
     val ttsEngine: String? = null,
     val ttsVoice: String? = null,
@@ -84,6 +86,7 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
             theme = enumOr(this[K_THEME], d.theme),
             reducedMotion = this[K_REDUCED] ?: d.reducedMotion,
             lowPerformance = this[K_LOWPERF] ?: d.lowPerformance,
+            avatarId = this[K_AVATAR] ?: d.avatarId,
             ttsEngine = this[K_TTS_ENGINE],
             ttsVoice = this[K_TTS_VOICE],
             ttsRate = this[K_TTS_RATE] ?: d.ttsRate,
@@ -108,6 +111,7 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
         this[K_THEME] = s.theme.name
         this[K_REDUCED] = s.reducedMotion
         this[K_LOWPERF] = s.lowPerformance
+        this[K_AVATAR] = s.avatarId
         setOrRemove(K_TTS_ENGINE, s.ttsEngine)
         setOrRemove(K_TTS_VOICE, s.ttsVoice)
         this[K_TTS_RATE] = s.ttsRate
@@ -142,6 +146,7 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
         val K_THEME = stringPreferencesKey("theme")
         val K_REDUCED = booleanPreferencesKey("reduced_motion")
         val K_LOWPERF = booleanPreferencesKey("low_performance")
+        val K_AVATAR = stringPreferencesKey("avatar_id")
         val K_TTS_ENGINE = stringPreferencesKey("tts_engine")
         val K_TTS_VOICE = stringPreferencesKey("tts_voice")
         val K_TTS_RATE = floatPreferencesKey("tts_rate")

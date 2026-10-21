@@ -63,7 +63,9 @@ import androidx.compose.ui.unit.sp
 import com.ultron.ai.AssistantState
 import com.ultron.ai.PendingPrompt
 import com.ultron.ai.R
+import com.ultron.ai.data.avatar.AvatarIds
 import com.ultron.ai.data.settings.UltronSettings
+import com.ultron.ai.ui.avatar.AvatarHero
 import com.ultron.ai.data.weather.WeatherState
 import com.ultron.ai.ui.LocalContainer
 import com.ultron.ai.ui.Routes
@@ -95,6 +97,8 @@ fun HomeScreen(
     var draft by remember { mutableStateOf("") }
     var ocrBusy by remember { mutableStateOf(false) }
     var ocrNote by remember { mutableStateOf<String?>(null) }
+    var avatarFailed by remember(settings.avatarId) { mutableStateOf(false) }
+    val use3d = settings.avatarId != AvatarIds.CORE && !settings.lowPerformance && !avatarFailed
 
     LaunchedEffect(settings.backendUrl, settings.weatherCity) { c.weather.refresh() }
 
@@ -151,8 +155,15 @@ fun HomeScreen(
             Text(stateLine(state), style = MaterialTheme.typography.bodyLarge, color = UltronColors.TextLo)
         }
 
-        // Core with wordmark
-        Box(
+        // Core (or 3D avatar) with wordmark
+        if (use3d) {
+            AvatarHero(
+                avatarId = settings.avatarId, state = state, level = level,
+                lowPerformance = settings.lowPerformance, reducedMotion = settings.reducedMotion,
+                onFailed = { avatarFailed = true }, onClick = { onNavigate(Routes.LIVE) },
+            )
+            Spacer(Modifier.height(12.dp))
+        } else Box(
             Modifier.fillMaxWidth().padding(top = 8.dp).clickable { onNavigate(Routes.LIVE) }
                 .semantics { contentDescription = "ULTRON core. Live voice kholne ke liye tap karo" },
             contentAlignment = Alignment.Center,

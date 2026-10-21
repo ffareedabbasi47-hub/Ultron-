@@ -20,41 +20,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Gradle
+      - name: Set up Gradle (cache)
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.10.2
 
+      # ubuntu-latest already ships the Android SDK (ANDROID_HOME); accept licences and install SDK 35.
       - name: Install Android SDK packages
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Unit tests
-        run: |
-          mkdir -p app/schemas
-          if [ -f "./gradlew" ] && [ -f "gradle/wrapper/gradle-wrapper.jar" ]; then
-            sed -i 's/\r$//' ./gradlew
-            chmod +x ./gradlew
-            ./gradlew testDebugUnitTest --stacktrace
-          else
-            gradle testDebugUnitTest --stacktrace
-          fi
+        run: ./gradlew testDebugUnitTest --stacktrace
 
       - name: Build debug APK
+        run: ./gradlew assembleDebug --stacktrace
+        # Optional: backend URL is public/non-secret. Add repo variable ULTRON_BACKEND_URL to bake it in.
         env:
           ORG_GRADLE_PROJECT_ultron.backendUrl: ${{ vars.ULTRON_BACKEND_URL }}
-        run: |
-          if [ -f "./gradlew" ] && [ -f "gradle/wrapper/gradle-wrapper.jar" ]; then
-            ./gradlew assembleDebug --stacktrace
-          else
-            gradle assembleDebug --stacktrace
-          fi
 
       - name: Upload debug APK
         if: success()
@@ -64,6 +54,7 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
+      # Always upload reports so compile/test errors can be read and fixed.
       - name: Upload build + test reports
         if: always()
         uses: actions/upload-artifact@v4

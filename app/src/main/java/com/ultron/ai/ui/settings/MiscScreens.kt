@@ -85,10 +85,10 @@ fun AboutScreen(onBack: () -> Unit) {
         Text("Configured creator: ${BuildConfig.CREATOR_NAME} (app configuration; independent authorship ka proof nahi).", color = UltronColors.TextLo, modifier = Modifier.padding(top = 6.dp))
 
         SectionLabel("Changelog")
-        Text("0.1.0 — pehla build: Home/Chat/Live voice, Awaaz Studio, Journal, Mood, Yaadein, Aaj reminders, Mausam (backend), Scan OCR, app kholna, YouTube search, encrypted local storage, secure backend proxy.", color = UltronColors.TextLo)
+        Text("0.1.0 — pehla build: 3D avatar (built-in + apna GLB, live wallpaper), Home/Chat/Live voice, Awaaz Studio, Journal, Mood, Yaadein, Aaj reminders, Mausam (backend), Scan OCR, app kholna, YouTube search, encrypted local storage, secure backend proxy.", color = UltronColors.TextLo)
 
         SectionLabel("Is build mein nahi hai")
-        Text("Wake word / background listening, screen understanding (MediaProjection), 3D avatar renderer aur model download, accessibility automation, QR scanning, PC↔Phone link, smart model routing, Dream Journal, web search.", color = UltronColors.TextLo)
+        Text("Wake word / background listening, screen understanding (MediaProjection), avatar skeleton/animation aur verified model catalog, home-screen widget, accessibility automation, QR scanning, PC↔Phone link, smart model routing, Dream Journal, web search.", color = UltronColors.TextLo)
 
         SectionLabel("Open-source licences")
         Text("AndroidX, Jetpack Compose, Kotlin, kotlinx.coroutines/serialization, OkHttp: Apache-2.0.\nSQLCipher for Android: BSD-style (Zetetic).\nGoogle ML Kit Text Recognition: ML Kit Terms of Service.\nWeather data: Open-Meteo (CC BY 4.0).", color = UltronColors.TextLo)
@@ -131,8 +131,7 @@ fun AutomationScreen(onBack: () -> Unit) {
 private data class InfoPage(val title: String, val status: String, val body: String, val alternative: String? = null)
 
 private val infoPages = mapOf(
-    "avatar" to InfoPage("Avatar Studio", "Is build mein nahi", "Abhi sirf built-in animated ULTRON core use hota hai. Real 3D (GLB/GLTF) renderer aur verified, licensed model catalog abhi implement nahi hai, isliye main koi nakli preview, progress bar ya download nahi dikhaunga.", "Core ki animation Menu → General mein reduced motion / low performance se control hoti hai."),
-    "downloads" to InfoPage("Download Center", "Khaali — kuch download nahi hota", "Is build mein koi model/avatar/voice download flow nahi hai, isliye yahan dikhane ko koi asli download nahi. Voice packs Android ke TTS settings se install hote hain (Awaaz Studio mein link hai)."),
+    "downloads" to InfoPage("Download Center", "Khaali — kuch download nahi hota", "Avatar models ka import/download Avatar Studio mein hota hai (aapki di hui https:// link ya file se, asli progress ke saath). Baaki koi model/voice download flow nahi hai; voice packs Android ke TTS settings se install hote hain (Awaaz Studio mein link hai)."),
     "websearch" to InfoPage("Web Search", "Setup chahiye", "Web search ke liye backend par ek asli search provider configure hona chahiye. Abhi koi configured nahi, isliye ULTRON live web results ka dawa nahi karta."),
     "screen" to InfoPage("Screen Samjho", "Is build mein nahi", "Screen understanding ke liye Android MediaProjection (system consent), foreground service, visible indicator aur Pause/Stop controls chahiye. Ye abhi implement nahi hua — ULTRON kabhi bhi chhupke screen capture ya upload nahi karta.", "Abhi: Scan tab se kisi image/photo ka text (OCR) padh sakte ho."),
     "accessibility" to InfoPage("Accessibility automation", "Use nahi hoti", "Is build mein koi AccessibilityService nahi hai, isliye ULTRON dusre apps ke buttons dabata nahi. App kholna aur settings screens kholna normal Android intents se hota hai."),

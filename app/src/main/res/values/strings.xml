@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ULTRON</string>
+    <string name="wallpaper_label">ULTRON Avatar</string>
+    <string name="wallpaper_description">Live 3D ULTRON avatar. Sirf built-in model dikhta hai.</string>
 </resources>

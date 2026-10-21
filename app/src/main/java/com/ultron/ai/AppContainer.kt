@@ -17,6 +17,7 @@ import com.ultron.ai.platform.vision.OcrEngine
 import com.ultron.ai.platform.voice.SttController
 import com.ultron.ai.platform.voice.TtsController
 import com.ultron.ai.data.ai.TurnController
+import com.ultron.ai.data.avatar.AvatarRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -49,6 +50,7 @@ class AppContainer(app: Application) {
     val engine = AssistantEngine(db.conversations(), provider, settings, identity, actions, latency, diagnostics)
     val weather = WeatherRepository(settings, http, diagnostics)
     val ocr = OcrEngine(app)
+    val avatars = AvatarRepository(app, http, diagnostics)
 
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
