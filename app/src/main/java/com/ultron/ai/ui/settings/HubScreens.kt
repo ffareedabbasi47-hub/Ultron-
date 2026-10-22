@@ -1,7 +1,6 @@
 package com.ultron.ai.ui.settings
 
 import androidx.compose.material3.Icon
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.Row
 import android.content.Intent
 import android.net.Uri
