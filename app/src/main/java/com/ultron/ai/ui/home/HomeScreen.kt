@@ -113,6 +113,9 @@ fun HomeScreen(
     var avatarFailed by remember(settings.avatarId) { mutableStateOf(false) }
     val use3d = settings.avatarId != AvatarIds.CORE && !settings.lowPerformance && !avatarFailed
 
+    val scrollState = rememberScrollState()
+    val reselect by c.homeReselect.collectAsState()
+    LaunchedEffect(reselect) { if (reselect > 0) scrollState.animateScrollTo(0) }
     val context = LocalContext.current
     val stt by c.stt.state.collectAsState()
     val turn by c.turns.state.collectAsState()
@@ -166,7 +169,7 @@ fun HomeScreen(
     }
 
     Column(
-        Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+        Modifier.fillMaxSize().statusBarsPadding().verticalScroll(scrollState).padding(horizontal = 16.dp),
     ) {
         TopBar(onMenu = onMenu, onBell = { onNavigate(Routes.NOTIFS) }, onAvatar = { onNavigate(Routes.GENERAL) })
         Spacer(Modifier.height(8.dp))
@@ -311,26 +314,17 @@ private val Color2 = UltronColors.TextHi
 
 @Composable
 private fun TopBar(onMenu: () -> Unit, onBell: () -> Unit, onAvatar: () -> Unit) {
-    Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onMenu, modifier = Modifier.size(46.dp).glass(CircleShape)) {
-            Icon(Icons.Filled.Menu, contentDescription = "Menu kholo", modifier = Modifier.size(30.dp))
+    Row(Modifier.fillMaxWidth().height(68.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onMenu, modifier = Modifier.size(48.dp).glass(CircleShape)) {
+            Icon(Icons.Filled.Menu, contentDescription = "Menu kholo", modifier = Modifier.size(28.dp))
         }
         Text(
-            "ULTRON", style = MaterialTheme.typography.titleLarge.copy(fontSize = 26.sp),
-            textAlign = TextAlign.Center, modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onBell, modifier = Modifier.size(46.dp).glass(CircleShape)) {
-            Icon(Icons.Filled.Notifications, contentDescription = "Reminders", modifier = Modifier.size(28.dp))
-        }
-        Spacer(Modifier.width(6.dp))
-        Box(
-            Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(UltronColors.Bg)
-                .border(1.5.dp, UltronColors.Cyan.copy(alpha = 0.8f), RoundedCornerShape(14.dp))
-                .clickable(onClick = onAvatar)
+            "ULTRON", style = MaterialTheme.typography.titleLarge.copy(fontSize = 28.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold),
+            modifier = Modifier.weight(1f).padding(start = 14.dp).clickable(onClick = onAvatar)
                 .semantics { contentDescription = "ULTRON profile aur settings" },
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(painterResource(R.drawable.ic_launcher_foreground), contentDescription = null, modifier = Modifier.size(52.dp))
+        )
+        IconButton(onClick = onBell, modifier = Modifier.size(48.dp).glass(CircleShape)) {
+            Icon(Icons.Filled.Notifications, contentDescription = "Notifications", modifier = Modifier.size(26.dp))
         }
     }
 }

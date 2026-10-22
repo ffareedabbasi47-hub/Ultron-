@@ -55,6 +55,8 @@ fun MemoryScreen(onBack: (() -> Unit)?) {
     val items by remember(query) { if (query.isBlank()) dao.observeAll() else dao.search(escapeLike(query.trim())) }.collectAsState(initial = emptyList())
     var editing by remember { mutableStateOf<MemoryEntity?>(null) }
     var creating by remember { mutableStateOf(false) }
+    var sourceFilter by remember { mutableStateOf("") }
+    var deleteOne by remember { mutableStateOf<MemoryEntity?>(null) }
     var deleteAll by remember { mutableStateOf(false) }
     val fmt = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
 
@@ -71,18 +73,23 @@ fun MemoryScreen(onBack: (() -> Unit)?) {
             color = UltronColors.TextLo, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
         LabeledField(query, { query = it }, "Search", Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("" to "Sab", "manual" to "Mera note", "command" to "Voice/command", "scan" to "Scan").forEach { (k, label) ->
+                androidx.compose.material3.FilterChip(selected = sourceFilter == k, onClick = { sourceFilter = k }, label = { Text(label) })
+            }
+        }
         if (items.isEmpty()) {
             EmptyState("Abhi kuch save nahi hai", "Bolo: \"yaad rakh: meri exam 5 March ko hai\".")
         } else {
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(items, key = { it.id }) { m ->
+                items(items.filter { sourceFilter.isEmpty() || it.source == sourceFilter }, key = { it.id }) { m ->
                     GlassCard(Modifier.fillMaxWidth(), onClick = { editing = m }) {
                         Row(Modifier.padding(14.dp)) {
                             Column(Modifier.weight(1f)) {
                                 Text(m.text, style = MaterialTheme.typography.bodyLarge)
-                                Text("${fmt.format(Date(m.updatedAt))} · ${m.source}", style = MaterialTheme.typography.labelSmall, color = UltronColors.Cyan)
+                                Text("${when (m.source) { "manual" -> "Mera note"; "command" -> "Voice/command"; "scan" -> "Scan"; else -> m.source }} · ${fmt.format(Date(m.updatedAt))}", style = MaterialTheme.typography.labelSmall, color = UltronColors.Cyan)
                             }
-                            IconButton(onClick = { scope.launch { dao.delete(m) } }) { Icon(Icons.Filled.Delete, "Delete") }
+                            IconButton(onClick = { deleteOne = m }) { Icon(Icons.Filled.Delete, "Delete") }
                         }
                     }
                 }
@@ -109,6 +116,9 @@ fun MemoryScreen(onBack: (() -> Unit)?) {
             },
             dismissButton = { TextButton(onClick = { creating = false; editing = null }) { Text("Cancel") } },
         )
+    }
+    deleteOne?.let { m ->
+        ConfirmDialog("Ye yaad delete karein?", "\"${m.text.take(80)}\" hamesha ke liye hat jayegi.", "Delete", { scope.launch { dao.delete(m) }; deleteOne = null }, { deleteOne = null })
     }
     if (deleteAll) ConfirmDialog("Saari yaadein delete karein?", "Ye wapas nahi aayengi.", "Sab delete karo", { scope.launch { dao.deleteAll() }; deleteAll = false }, { deleteAll = false })
 }

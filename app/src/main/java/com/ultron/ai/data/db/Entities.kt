@@ -82,6 +82,10 @@ data class WorkDocEntity(
     val updatedAt: Long,
     /** Optional planned date (epoch millis) for marketing posts; 0 = none. */
     val plannedAt: Long = 0,
+    /** Marketing: platform label (Instagram, WhatsApp, ...). Free text, nothing is published anywhere. */
+    val tag: String = "",
+    /** Marketing: "draft" | "ready" | "posted" (user-set; ULTRON never publishes). */
+    val status: String = "",
 )
 
 /** Manual watchlist/position entry. Prices are typed by the user; no live market feed exists in this build. */
@@ -95,4 +99,8 @@ data class MarketEntity(
     val lastPrice: Double,
     val note: String,
     val updatedAt: Long,
+    /** NSE | BSE | OTHER (label only). */
+    val exchange: String = "NSE",
+    /** "watch" = watchlist symbol only, "position" = quantity + buy price. */
+    val type: String = "position",
 )

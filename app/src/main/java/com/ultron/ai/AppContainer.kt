@@ -64,6 +64,8 @@ class AppContainer(app: Application) {
     val pendingPrompt = MutableStateFlow<PendingPrompt?>(null)
     /** Set by the dock mic; Home consumes it and toggles listening there. */
     val micRequest = MutableStateFlow(false)
+    /** Incremented when Home is tapped while already on Home: scroll to top. */
+    val homeReselect = MutableStateFlow(0)
 
     /** Real, app-wide assistant state shown by the core animation on every screen. */
     val assistantState = MutableStateFlow(AssistantState.IDLE)

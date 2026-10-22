@@ -37,7 +37,8 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Rule
+import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Apps
@@ -98,6 +99,10 @@ import com.ultron.ai.ui.features.TodayScreen
 import com.ultron.ai.ui.features.WeatherScreen
 import com.ultron.ai.ui.home.HomeScreen
 import com.ultron.ai.ui.settings.AboutScreen
+import com.ultron.ai.ui.settings.BackupScreen
+import com.ultron.ai.ui.settings.ConnectorsScreen
+import com.ultron.ai.ui.settings.PolicyScreen
+import com.ultron.ai.ui.settings.VoiceEngineScreen
 import com.ultron.ai.ui.settings.AccessibilityScreen
 import com.ultron.ai.ui.settings.ActivityScreen
 import com.ultron.ai.ui.settings.NotificationsScreen
@@ -121,33 +126,36 @@ private data class MenuItem(val label: String, val route: String, val icon: Imag
 private data class MenuGroup(val title: String, val items: List<MenuItem>)
 
 private val menu = listOf(
-    MenuGroup("", listOf(MenuItem("Home", Routes.HOME, Icons.Filled.Home))),
+    MenuGroup("", listOf(
+        MenuItem("Home", Routes.HOME, Icons.Filled.Home),
+        MenuItem("Yaadein", Routes.MEMORY, Icons.Filled.Psychology),
+        MenuItem("Chat", Routes.chat(), Icons.Filled.Forum),
+    )),
     MenuGroup("KAAM-KAAJ", listOf(
-        MenuItem("Chat aur History", Routes.chat(), Icons.Filled.Forum),
+        MenuItem("Markets", Routes.MARKETS, Icons.Filled.ShowChart),
+        MenuItem("Marketing", Routes.MARKETING, Icons.Filled.Storefront),
+        MenuItem("Documents", Routes.DOCS, Icons.Filled.Description),
+        MenuItem("Website / Coding", Routes.CODING, Icons.Filled.Code),
+        MenuItem("Accessibility", Routes.ACCESS, Icons.Filled.AccessibilityNew),
         MenuItem("Gaane / YouTube", Routes.GAANE, Icons.Filled.MusicNote),
         MenuItem("Padhai", Routes.chat(study = true), Icons.Filled.MenuBook),
         MenuItem("Journal / Notes", Routes.JOURNAL, Icons.Filled.Edit),
         MenuItem("Mausam", Routes.WEATHER, Icons.Filled.Cloud),
         MenuItem("Aaj / Reminders", Routes.TODAY, Icons.Filled.CalendarToday),
         MenuItem("Mood", Routes.MOOD, Icons.Filled.Favorite),
-        MenuItem("Markets", Routes.MARKETS, Icons.Filled.ShowChart),
-        MenuItem("Marketing", Routes.MARKETING, Icons.Filled.Campaign),
-        MenuItem("Documents", Routes.DOCS, Icons.Filled.Description),
-        MenuItem("Website / Coding", Routes.CODING, Icons.Filled.Code),
         MenuItem("Scan / Camera", Routes.SCAN, Icons.Filled.CenterFocusStrong),
-        MenuItem("Yaadein / Memory", Routes.MEMORY, Icons.Filled.Psychology),
+        MenuItem("Apps kholna", Routes.AUTOMATION, Icons.Filled.Apps),
+    )),
+    MenuGroup("AI STUDIO", listOf(
+        MenuItem("AI Brain / Gemini key", Routes.AI, Icons.Filled.AutoAwesome),
+        MenuItem("Awaaz Studio", Routes.VOICE, Icons.Filled.RecordVoiceOver),
+        MenuItem("Avatar Studio / Downloads", Routes.AVATAR, Icons.Filled.Face, "Beta"),
     )),
     MenuGroup("SYSTEM", listOf(
         MenuItem("Settings", Routes.SETTINGS, Icons.Filled.Settings),
-        MenuItem("AI Brain / Gemini key", Routes.AI, Icons.Filled.AutoAwesome),
-        MenuItem("ULTRON ke rules", Routes.RULES, Icons.Filled.Rule),
-        MenuItem("Awaaz Studio", Routes.VOICE, Icons.Filled.RecordVoiceOver),
-        MenuItem("Avatar Studio / 3D", Routes.AVATAR, Icons.Filled.Face, "Beta"),
-        MenuItem("Apps kholna", Routes.AUTOMATION, Icons.Filled.Apps),
-        MenuItem("Accessibility", Routes.ACCESS, Icons.Filled.AccessibilityNew),
-        MenuItem("PC ↔ Phone", Routes.PC, Icons.Filled.Devices, "Setup chahiye"),
+        MenuItem("ULTRON ke rules", Routes.RULES, Icons.Filled.VerifiedUser),
+        MenuItem("PC + Phone", Routes.PC, Icons.Filled.Devices, "Setup chahiye"),
         MenuItem("Privacy aur Data", Routes.PRIVACY, Icons.Filled.Lock),
-        MenuItem("Connectivity", Routes.CONNECT, Icons.Filled.Wifi),
         MenuItem("Activity", Routes.ACTIVITY, Icons.Filled.History),
         MenuItem("Diagnostics", Routes.DIAG, Icons.Filled.BugReport),
         MenuItem("About", Routes.ABOUT, Icons.Filled.Info),
@@ -203,13 +211,17 @@ fun AppRoot(settings: UltronSettings) {
                     composable(Routes.DIAG) { DiagnosticsScreen(back) }
                     composable(Routes.ABOUT) { AboutScreen(back) }
                     composable(Routes.AUTOMATION) { AutomationScreen(back) }
-                    composable(Routes.MARKETS) { MarketsScreen(back) }
-                    composable(Routes.MARKETING) { WorkScreen(WorkKind.POST, back, push) }
+                    composable(Routes.MARKETS) { MarketsScreen(back, push) }
+                    composable(Routes.MARKETING) { com.ultron.ai.ui.features.MarketingScreen(back, push) }
                     composable(Routes.DOCS) { WorkScreen(WorkKind.DOC, back, push) }
                     composable(Routes.CODING) { WorkScreen(WorkKind.CODE, back, push) }
                     composable(Routes.ACCESS) { AccessibilityScreen(back) }
                     composable(Routes.SETTINGS) { SettingsHubScreen(back, push) }
                     composable(Routes.RULES) { RulesScreen(settings, back) }
+                    composable(Routes.BACKUP) { BackupScreen(back) }
+                    composable(Routes.POLICY) { PolicyScreen(back) }
+                    composable(Routes.VOICE_ENGINE) { VoiceEngineScreen(back, push) }
+                    composable(Routes.CONNECTORS) { ConnectorsScreen(back) }
                     composable(Routes.PC) { InfoScreen("pc", back) }
                     composable(Routes.ACTIVITY) { ActivityScreen(back, push) }
                     composable(Routes.NOTIFS) { NotificationsScreen(back, push) }
@@ -223,7 +235,7 @@ fun AppRoot(settings: UltronSettings) {
                 BottomBar(
                     route = route,
                     chatSelected = chatRoute,
-                    onHome = { navigateTop(nav, Routes.HOME) },
+                    onHome = { if (route == Routes.HOME) c.homeReselect.value++ else navigateTop(nav, Routes.HOME) },
                     onScan = { navigateTop(nav, Routes.SCAN) },
                     onLive = { c.micRequest.value = true; if (route != Routes.HOME) navigateTop(nav, Routes.HOME) },
                     onMemory = { navigateTop(nav, Routes.MEMORY) },
@@ -272,12 +284,12 @@ private fun DrawerContent(route: String?, onPick: (String) -> Unit) {
                     g.items.forEach { m ->
                         item(key = "i-${g.title}-${m.label}") {
                             val active = route == m.route
-                            val shape = RoundedCornerShape(18.dp)
+                            val shape = RoundedCornerShape(24.dp)
                             Row(
-                                Modifier.fillMaxWidth().height(52.dp).clip(shape)
+                                Modifier.fillMaxWidth().height(58.dp).shadow(4.dp, shape, ambientColor = Color(0x66000000), spotColor = Color(0x334F9CFF)).clip(shape)
                                     .background(
                                         if (active) Brush.horizontalGradient(listOf(UltronColors.Blue.copy(alpha = 0.55f), UltronColors.Violet.copy(alpha = 0.45f)))
-                                        else Brush.linearGradient(listOf(UltronColors.GlassTop, UltronColors.GlassBottom)), shape,
+                                        else Brush.linearGradient(listOf(UltronColors.Raised, Color(0xFF1B2450))), shape,
                                     )
                                     .clickable { onPick(m.route) }.padding(horizontal = 14.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -316,9 +328,10 @@ private fun BottomBar(
             NavItem("Chat", Icons.Filled.Forum, chatSelected, Modifier.weight(1f), onChat)
         }
         Box(
-            Modifier.align(Alignment.TopCenter).offset(y = (-24).dp).size(70.dp)
+            Modifier.align(Alignment.TopCenter).offset(y = (-26).dp).size(76.dp)
                 .shadow(14.dp, CircleShape, ambientColor = UltronColors.Blue, spotColor = UltronColors.Blue)
-                .clip(CircleShape).background(Color.White)
+                .clip(CircleShape).background(Brush.radialGradient(listOf(UltronColors.Cyan, UltronColors.Blue)))
+                .padding(8.dp).clip(CircleShape).background(Color.White)
                 .clickable(onClick = onLive)
                 .semantics { contentDescription = "Bolna shuru karo" },
             contentAlignment = Alignment.Center,
@@ -330,12 +343,15 @@ private fun BottomBar(
 
 @Composable
 private fun NavItem(label: String, icon: ImageVector, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val color = if (selected) UltronColors.Blue else UltronColors.TextLo
-    Column(
-        modifier.height(68.dp).clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(26.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Default), color = color, maxLines = 1)
+    val color = if (selected) Color.White else UltronColors.TextLo
+    Box(modifier.height(68.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.size(width = 62.dp, height = 56.dp).clip(RoundedCornerShape(20.dp))
+                .then(if (selected) Modifier.background(Brush.verticalGradient(listOf(UltronColors.Blue, Color(0xFF2B6FD6))), RoundedCornerShape(20.dp)) else Modifier),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Default, fontSize = 11.sp), color = color, maxLines = 1)
+        }
     }
 }

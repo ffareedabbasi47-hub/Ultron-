@@ -22,6 +22,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
@@ -100,6 +102,7 @@ fun ChatScreen(study: Boolean, onBack: () -> Unit, onNavigate: (String) -> Unit)
                     Icon(Icons.Filled.VolumeOff, contentDescription = "Bolna band karo", tint = UltronColors.Red)
                 }
             }
+            IconButton(onClick = { currentId?.let { confirmDelete = it } }, enabled = messages.isNotEmpty(), modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.DeleteSweep, contentDescription = "Ye chat saaf karo") }
             IconButton(onClick = { vm.newChat() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.Add, contentDescription = "Nayi chat") }
             IconButton(onClick = { showHistory = true }, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.History, contentDescription = "History") }
         }
@@ -227,10 +230,14 @@ private fun EmptyChat(study: Boolean) {
 
 @Composable
 private fun Bubble(mine: Boolean, text: String, placeholder: Boolean = false, cancelled: Boolean = false) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Bottom) {
+        if (mine && !placeholder) IconButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(text)) }, modifier = Modifier.size(40.dp)) {
+            Icon(Icons.Filled.ContentCopy, contentDescription = "Copy karo", tint = UltronColors.TextLo, modifier = Modifier.size(18.dp))
+        }
         Box(
             Modifier.widthIn(max = 320.dp)
-                .glass(RoundedCornerShape(20.dp), tint = if (mine) UltronColors.Violet.copy(alpha = 0.30f) else TransparentTint)
+                .glass(RoundedCornerShape(20.dp), tint = if (mine) UltronColors.Blue.copy(alpha = 0.30f) else TransparentTint)
                 .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
             SelectionContainer {
@@ -240,6 +247,9 @@ private fun Bubble(mine: Boolean, text: String, placeholder: Boolean = false, ca
                     color = if (placeholder) UltronColors.TextLo else UltronColors.TextHi,
                 )
             }
+        }
+        if (!mine && !placeholder) IconButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(text)) }, modifier = Modifier.size(40.dp)) {
+            Icon(Icons.Filled.ContentCopy, contentDescription = "Copy karo", tint = UltronColors.TextLo, modifier = Modifier.size(18.dp))
         }
     }
 }
