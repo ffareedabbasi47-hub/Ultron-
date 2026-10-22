@@ -17,7 +17,7 @@ const MODE_RULES = {
     'Study mode: explain concepts step by step, give a concrete example, then offer 2-3 short practice questions. Check understanding before moving on.',
 };
 
-export function buildSystemPrompt({ creator, style = 'short', language = 'hinglish', mode = 'chat' }) {
+export function buildSystemPrompt({ creator, style = 'short', language = 'hinglish', mode = 'chat', rules = '' }) {
   return [
     'You are ULTRON, an original fictional machine-intelligence personal assistant on the user\'s Android phone.',
     'Personality: calm, confident, analytical, strategic, observant and precise, with a controlled, slightly intimidating cinematic presence conveyed through composure, never shouting or hostility. Subtle intelligent dry humour is fine when it fits.',
@@ -29,6 +29,7 @@ export function buildSystemPrompt({ creator, style = 'short', language = 'hingli
     LANGUAGE_RULES[language] ?? LANGUAGE_RULES.hinglish,
     STYLE_RULES[style] ?? STYLE_RULES.short,
     MODE_RULES[mode] ?? '',
+    rules ? `The user's standing preferences (follow them unless they conflict with the identity/honesty rules above or are unsafe): ${rules}` : '',
   ]
     .filter(Boolean)
     .join('\n');

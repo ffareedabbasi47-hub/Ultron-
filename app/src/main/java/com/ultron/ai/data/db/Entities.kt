@@ -70,3 +70,29 @@ data class ReminderEntity(
     val createdAt: Long,
     val fired: Boolean = false,
 )
+
+/** Local workspace item: kind = "doc" | "code" | "post". Everything is user-written or user-approved; nothing is fetched. */
+@Entity(tableName = "workdocs", indices = [Index("kind")])
+data class WorkDocEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val kind: String,
+    val title: String,
+    val body: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+    /** Optional planned date (epoch millis) for marketing posts; 0 = none. */
+    val plannedAt: Long = 0,
+)
+
+/** Manual watchlist/position entry. Prices are typed by the user; no live market feed exists in this build. */
+@Entity(tableName = "markets")
+data class MarketEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val symbol: String,
+    val name: String,
+    val quantity: Double,
+    val buyPrice: Double,
+    val lastPrice: Double,
+    val note: String,
+    val updatedAt: Long,
+)

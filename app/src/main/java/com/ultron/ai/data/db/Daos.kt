@@ -72,3 +72,25 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders WHERE fired = 0 ORDER BY triggerAt ASC LIMIT 1") fun observeNext(): Flow<ReminderEntity?>
     @Query("DELETE FROM reminders") suspend fun deleteAll()
 }
+
+@Dao
+interface WorkDocDao {
+    @Insert suspend fun insert(e: WorkDocEntity): Long
+    @Update suspend fun update(e: WorkDocEntity)
+    @Delete suspend fun delete(e: WorkDocEntity)
+    @Query("SELECT * FROM workdocs WHERE kind = :kind ORDER BY updatedAt DESC") fun observe(kind: String): Flow<List<WorkDocEntity>>
+    @Query("SELECT * FROM workdocs WHERE kind = :kind AND (title LIKE '%' || :q || '%' ESCAPE '\\' OR body LIKE '%' || :q || '%' ESCAPE '\\') ORDER BY updatedAt DESC")
+    fun search(kind: String, q: String): Flow<List<WorkDocEntity>>
+    @Query("SELECT * FROM workdocs ORDER BY createdAt ASC") suspend fun all(): List<WorkDocEntity>
+    @Query("DELETE FROM workdocs") suspend fun deleteAll()
+}
+
+@Dao
+interface MarketDao {
+    @Insert suspend fun insert(e: MarketEntity): Long
+    @Update suspend fun update(e: MarketEntity)
+    @Delete suspend fun delete(e: MarketEntity)
+    @Query("SELECT * FROM markets ORDER BY symbol ASC") fun observeAll(): Flow<List<MarketEntity>>
+    @Query("SELECT * FROM markets ORDER BY symbol ASC") suspend fun all(): List<MarketEntity>
+    @Query("DELETE FROM markets") suspend fun deleteAll()
+}

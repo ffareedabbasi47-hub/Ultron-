@@ -22,20 +22,22 @@ import androidx.compose.ui.unit.sp
 import com.ultron.ai.data.settings.ThemeVariant
 
 object UltronColors {
-    val Bg = Color(0xFF07060D)
-    val BgDeep = Color(0xFF110B22)
-    val Graphite = Color(0xFF17151F)
+    val Bg = Color(0xFF080B1B)
+    val BgDeep = Color(0xFF0E1330)
+    val Graphite = Color(0xFF151B3A)
     val Violet = Color(0xFF8B5CF6)
-    val Cyan = Color(0xFF22D3EE)
+    val Cyan = Color(0xFF35D6E8)
+    val Blue = Color(0xFF4F9CFF)
+    val Raised = Color(0xFF202A55)
     val Magenta = Color(0xFFD946EF)
     val Red = Color(0xFFFF2A44)
     val Gold = Color(0xFFFBBF24)
     val Green = Color(0xFF34D399)
-    val TextHi = Color(0xFFF4F1FF)
-    val TextLo = Color(0xFFA39CBF)
-    val GlassTop = Color(0x2AFFFFFF)
-    val GlassBottom = Color(0x0DFFFFFF)
-    val GlassBorder = Color(0x38FFFFFF)
+    val TextHi = Color(0xFFF4F6FF)
+    val TextLo = Color(0xFFAAB4D2)
+    val GlassTop = Color(0xFF232E60)
+    val GlassBottom = Color(0xFF151B3A)
+    val GlassBorder = Color(0x40AFC4FF)
 }
 
 /** Motion/performance preferences, available to every composable. */
@@ -47,7 +49,7 @@ data class UiPrefs(val reducedMotion: Boolean = false, val lowPerformance: Boole
 val LocalUiPrefs = compositionLocalOf { UiPrefs() }
 
 private val scheme = darkColorScheme(
-    primary = UltronColors.Violet,
+    primary = UltronColors.Blue,
     onPrimary = Color.White,
     secondary = UltronColors.Cyan,
     onSecondary = Color.Black,
@@ -56,7 +58,7 @@ private val scheme = darkColorScheme(
     onBackground = UltronColors.TextHi,
     surface = UltronColors.Graphite,
     onSurface = UltronColors.TextHi,
-    surfaceVariant = Color(0xFF241F33),
+    surfaceVariant = UltronColors.Raised,
     onSurfaceVariant = UltronColors.TextLo,
     error = UltronColors.Red,
     outline = UltronColors.GlassBorder,
@@ -100,7 +102,7 @@ fun UltronBackground(variant: ThemeVariant, content: @Composable () -> Unit) {
             .drawBehind {
                 drawCircle(
                     brush = Brush.radialGradient(
-                        listOf(UltronColors.Violet.copy(alpha = 0.22f), Color.Transparent),
+                        listOf(UltronColors.Blue.copy(alpha = 0.18f), Color.Transparent),
                         center = Offset(size.width * 0.85f, size.height * 0.12f),
                         radius = size.width * 0.9f,
                     ),
@@ -109,7 +111,7 @@ fun UltronBackground(variant: ThemeVariant, content: @Composable () -> Unit) {
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
-                        listOf(UltronColors.Magenta.copy(alpha = 0.10f), Color.Transparent),
+                        listOf(UltronColors.Violet.copy(alpha = 0.12f), Color.Transparent),
                         center = Offset(size.width * 0.1f, size.height * 0.8f),
                         radius = size.width * 0.8f,
                     ),

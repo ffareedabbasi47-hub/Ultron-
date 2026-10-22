@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -41,8 +42,9 @@ import com.ultron.ai.ui.theme.UltronColors
 /** Translucent glass surface used by every card/chip/composer. */
 fun Modifier.glass(shape: Shape = RoundedCornerShape(24.dp), tint: Color = Color.Transparent): Modifier =
     this
+        .shadow(6.dp, shape, clip = false, ambientColor = Color(0x66000000), spotColor = Color(0x664F9CFF))
         .clip(shape)
-        .background(Brush.verticalGradient(listOf(UltronColors.GlassTop, UltronColors.GlassBottom)), shape)
+        .background(Brush.linearGradient(listOf(UltronColors.GlassTop, UltronColors.GlassBottom)), shape)
         .background(tint, shape)
         .border(BorderStroke(1.dp, UltronColors.GlassBorder), shape)
 
@@ -114,7 +116,7 @@ fun IconTextRow(icon: ImageVector, title: String, subtitle: String? = null, onCl
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = UltronColors.Violet)
+        Icon(icon, contentDescription = null, tint = UltronColors.Blue)
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = UltronColors.TextLo)

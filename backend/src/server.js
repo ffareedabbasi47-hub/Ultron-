@@ -116,7 +116,7 @@ export function createServer(cfg, deps = {}) {
       const v = validateChatBody(body, cfg);
       if (!v.ok) return sendJson(res, v.status ?? 400, { error: 'invalid_request', detail: v.error });
 
-      const { messages, style, language, mode, model } = v.value;
+      const { messages, style, language, mode, model, rules } = v.value;
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), cfg.upstreamTimeoutMs);
       res.on('close', () => {
@@ -124,7 +124,7 @@ export function createServer(cfg, deps = {}) {
         ac.abort(); // client went away or finished: stop paying for upstream tokens
       });
 
-      const system = buildSystemPrompt({ creator: cfg.creatorName, style, language, mode });
+      const system = buildSystemPrompt({ creator: cfg.creatorName, style, language, mode, rules });
       const it = streamChat({ cfg, model, system, messages, signal: ac.signal, fetchImpl })[Symbol.asyncIterator]();
       const t0 = Date.now();
 

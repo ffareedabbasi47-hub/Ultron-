@@ -103,10 +103,42 @@ fun AiScreen(settings: UltronSettings, onBack: () -> Unit, onConnect: () -> Unit
     val scope = rememberCoroutineScope()
     var status by remember { mutableStateOf<ProviderStatus?>(null) }
     var loading by remember { mutableStateOf(true) }
+    var keyVersion by remember { mutableStateOf(0) }
+    var keyInput by remember { mutableStateOf("") }
+    var showKey by remember { mutableStateOf(false) }
+    val savedKey = remember(keyVersion) { c.settings.geminiKey() }
     fun update(b: (UltronSettings) -> UltronSettings) = scope.launch { c.settings.update(b) }
-    LaunchedEffect(settings.backendUrl) { loading = true; status = c.provider.status(); loading = false }
+    LaunchedEffect(settings.backendUrl, keyVersion) { loading = true; status = c.provider.status(); loading = false }
 
     Page("AI Brain", onBack) {
+        SectionLabel("Gemini API key")
+        GlassCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (savedKey != null) {
+                    StatusPill("Key saved · …${savedKey.takeLast(4)}", UltronColors.Green)
+                    Text("Ab chat seedha Gemini se hota hai (backend ke bina) — sabse tez route.", style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    Text("Apni Gemini API key daalo (Google AI Studio se). Key is phone par encrypted rehti hai, APK ya repo mein nahi.", style = MaterialTheme.typography.bodyMedium)
+                }
+                OutlinedTextField(
+                    value = keyInput, onValueChange = { keyInput = it.trim() }, singleLine = true,
+                    label = { Text(if (savedKey != null) "Nayi key (badalne ke liye)" else "Gemini API key") },
+                    visualTransformation = if (showKey) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Button(enabled = keyInput.length >= 20, onClick = {
+                        c.settings.setGeminiKey(keyInput); keyInput = ""; keyVersion++
+                        update { it.copy(cloudConsent = true) }
+                    }) { Text("Save") }
+                    OutlinedButton(onClick = { showKey = !showKey }) { Text(if (showKey) "Chhupao" else "Dikhao") }
+                    if (savedKey != null) TextButton(onClick = { c.settings.setGeminiKey(null); keyVersion++ }) { Text("Hatao") }
+                }
+                Text("Save karne par tumhara chat text Google Gemini ko bheja jayega (Cloud AI allow on ho jata hai). Rooted phone par key nikal sakti hai — zyada safety chahiye to backend proxy use karo.", color = UltronColors.TextLo, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+
         SectionLabel("Provider")
         GlassCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -124,17 +156,26 @@ fun AiScreen(settings: UltronSettings, onBack: () -> Unit, onConnect: () -> Unit
 
         SectionLabel("Model")
         val models = status?.models.orEmpty()
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        if (savedKey != null) {
+            models.forEach { m ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = settings.geminiModel == m, onClick = { update { it.copy(geminiModel = m) } })
+                    Text(m)
+                }
+            }
+            if (models.isEmpty() && !loading) Text("Key se model list nahi mili. Default: ${settings.geminiModel}", color = UltronColors.TextLo, style = MaterialTheme.typography.bodyMedium)
+            Text("Tez jawab ke liye flash / flash-lite model chuno.", color = UltronColors.TextLo, style = MaterialTheme.typography.bodyMedium)
+        } else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             RadioButton(selected = settings.selectedModel == null, onClick = { update { it.copy(selectedModel = null) } })
             Text("Backend ka default model")
         }
-        models.forEach { m ->
+        if (savedKey == null) models.forEach { m ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 RadioButton(selected = settings.selectedModel == m, onClick = { update { it.copy(selectedModel = m) } })
                 Text(m)
             }
         }
-        if (models.isEmpty() && !loading) Text("Backend se koi model list nahi mili. Sirf wahi models dikhte hain jo backend sach mein configured karta hai.", color = UltronColors.TextLo, style = MaterialTheme.typography.bodyMedium)
+        if (savedKey == null && models.isEmpty() && !loading) Text("Backend se koi model list nahi mili. Sirf wahi models dikhte hain jo backend sach mein configured karta hai.", color = UltronColors.TextLo, style = MaterialTheme.typography.bodyMedium)
         Text("Auto / Fast / Balanced / Advanced routing: Setup chahiye — abhi backend ek hi configured model list deta hai, isliye smart routing is build mein nahi hai.", color = UltronColors.TextLo, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
 
         SectionLabel("Jawab ka style")
@@ -153,6 +194,9 @@ fun AiScreen(settings: UltronSettings, onBack: () -> Unit, onConnect: () -> Unit
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(0, 1, 2, 3).forEach { t -> FilterChip(selected = settings.maxRetries == t, onClick = { update { it.copy(maxRetries = t) } }, label = { Text("$t") }) }
         }
+
+        SectionLabel("ULTRON ke rules")
+        RulesEditor(settings)
 
         SectionLabel("Cloud")
         SwitchRow("Cloud AI allow", "Chat text backend ko bheja jata hai. Band rakhoge to device commands (app kholna, reminder, YouTube) phir bhi chalenge.", settings.cloudConsent) { v -> update { it.copy(cloudConsent = v) } }
@@ -244,6 +288,12 @@ fun PrivacyScreen(settings: UltronSettings, onBack: () -> Unit) {
         PermRow("Accessibility", "Use nahi hoti", UltronColors.TextLo, "Koi accessibility service enable nahi karni padti.")
         PermRow("Background mic", "Is build mein nahi", UltronColors.TextLo, "Koi foreground service ya wake word nahi.")
 
+        SectionLabel("ULTRON ke rules")
+        var rules by remember(settings.customRules) { mutableStateOf(settings.customRules) }
+        OutlinedTextField(value = rules, onValueChange = { rules = it.take(600) }, label = { Text("Apne rules (max 600 akshar)") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+        Button(onClick = { update { it.copy(customRules = rules.trim()) } }, enabled = rules.trim() != settings.customRules) { Text("Rules save") }
+        Text("Ye rules har jawab ke saath jate hain, par identity/honesty/safety rules se upar nahi.", color = UltronColors.TextLo, style = MaterialTheme.typography.bodySmall)
+
         SectionLabel("Cloud")
         SwitchRow("Cloud AI allow", "Chat text (aur recent context) backend → AI provider ko jata hai. Audio/screen/images kabhi nahi.", settings.cloudConsent) { v -> scope.launch { c.settings.update { it.copy(cloudConsent = v) } } }
 
@@ -259,7 +309,7 @@ fun PrivacyScreen(settings: UltronSettings, onBack: () -> Unit) {
             scope.launch {
                 c.turns.cancel(); c.tts.stop()
                 c.reminders.cancelAll()
-                c.db.conversations().deleteAll(); c.db.journal().deleteAll(); c.db.mood().deleteAll(); c.db.memory().deleteAll()
+                c.db.conversations().deleteAll(); c.db.journal().deleteAll(); c.db.mood().deleteAll(); c.db.memory().deleteAll(); c.db.workDocs().deleteAll(); c.db.markets().deleteAll()
                 c.settings.resetAll()
             }
             confirmAll = false

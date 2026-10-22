@@ -14,6 +14,8 @@ data class ChatRequest(
     val mode: ChatMode,
     val model: String?,
     val timeoutSec: Int,
+    /** Standing user preferences ("ULTRON ke rules"), already length-limited. */
+    val rules: String = "",
 )
 
 sealed interface ChatEvent {

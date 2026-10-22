@@ -104,3 +104,12 @@ Standalone viewer: open `ultron-avatar.html` in a browser (⚙ opens the control
 3. Pick a licensed wake-word engine, then add a microphone foreground service.
 4. Add MediaProjection + vision flow with visible indicator and consent.
 5. Choose a GLB renderer and verify licences before any avatar catalog.
+
+## Gemini key, Home voice, new screens (latest)
+
+- **AI Brain → Gemini API key**: paste your own key (stored Keystore-encrypted, never in APK/repo/logs). With a key saved, chat streams straight from Gemini (fastest route); without it, the backend proxy is used. Model list comes from your key. A key on a rooted phone can be extracted — the proxy is safer.
+- **Speed**: direct route, minimal thinking, token caps, connection prewarm, shorter history default (8), speech starts after the first ~12-character sentence.
+- **Live page removed.** Voice happens on Home: tap the core or the dock mic; the reply/transcript shows on Home. Typing on Home also answers on Home.
+- **New screens** (all local data, no fake feeds): Markets (manual prices only — no live market feed), Marketing drafts, Documents, Website/Coding (locked-down HTML preview), Settings hub, ULTRON ke rules, Accessibility/Battery shortcuts, Activity, Notifications.
+- Unavailable (shown honestly in-app): live market prices, Notion/Todoist/Linear connectors, PC pairing, restore-from-backup, AccessibilityService automation.
+- Status: backend tests and pure-Kotlin tests were run; the Android/Compose layer has **not** been compiled or run on a device — expect small first-build fixes in GitHub Actions.

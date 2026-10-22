@@ -12,6 +12,7 @@ import com.ultron.ai.domain.ChatTurn
 import com.ultron.ai.domain.CommandParser
 import com.ultron.ai.domain.ContextBuilder
 import com.ultron.ai.domain.IdentityResponder
+import com.ultron.ai.domain.Persona
 import com.ultron.ai.domain.UltronAction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -95,7 +96,7 @@ class AssistantEngine(
             .filter { it.status == MessageEntity.STATUS_OK }
             .map { ChatTurn(it.role, it.text) }
         val turns = ContextBuilder.bound(history, maxTurns = s.historyTurns.coerceIn(2, 40), maxChars = MAX_CONTEXT_CHARS)
-        val request = ChatRequest(turns, s.responseStyle, s.language, mode, s.selectedModel, s.timeoutSec)
+        val request = ChatRequest(turns, s.responseStyle, s.language, mode, s.selectedModel, s.timeoutSec, s.customRules.trim().take(Persona.MAX_RULES_CHARS))
 
         val start = now()
         var firstTokenAt: Long? = null

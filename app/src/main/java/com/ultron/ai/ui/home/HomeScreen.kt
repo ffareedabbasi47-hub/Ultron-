@@ -1,6 +1,19 @@
 package com.ultron.ai.ui.home
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
+import com.ultron.ai.data.ai.ChatMode
+import com.ultron.ai.data.ai.ErrorKind
+import com.ultron.ai.platform.voice.SttState
+import kotlinx.coroutines.flow.emptyFlow
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -61,7 +74,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ultron.ai.AssistantState
-import com.ultron.ai.PendingPrompt
 import com.ultron.ai.R
 import com.ultron.ai.data.avatar.AvatarIds
 import com.ultron.ai.data.settings.UltronSettings
@@ -72,6 +84,7 @@ import com.ultron.ai.ui.Routes
 import com.ultron.ai.ui.components.ComposerBar
 import com.ultron.ai.ui.components.Equalizer
 import com.ultron.ai.ui.components.GlassCard
+import com.ultron.ai.ui.components.glass
 import com.ultron.ai.ui.components.UltronCore
 import com.ultron.ai.ui.components.coreStateLabel
 import com.ultron.ai.ui.theme.UltronColors
@@ -100,7 +113,40 @@ fun HomeScreen(
     var avatarFailed by remember(settings.avatarId) { mutableStateOf(false) }
     val use3d = settings.avatarId != AvatarIds.CORE && !settings.lowPerformance && !avatarFailed
 
+    val context = LocalContext.current
+    val stt by c.stt.state.collectAsState()
+    val turn by c.turns.state.collectAsState()
+    var micGranted by remember { mutableStateOf(hasMic(context)) }
+    var micAsked by remember { mutableStateOf(false) }
+    var lastHeard by remember { mutableStateOf("") }
+    val convId = turn.conversationId
+    val messages by remember(convId) { if (convId != null) c.db.conversations().observeMessages(convId) else emptyFlow<List<com.ultron.ai.data.db.MessageEntity>>() }
+        .collectAsState(initial = emptyList())
+    val lastReply = messages.lastOrNull { it.role == "assistant" }?.text.orEmpty()
+
     LaunchedEffect(settings.backendUrl, settings.weatherCity) { c.weather.refresh() }
+
+    fun listen() {
+        c.turns.cancel(); c.turns.dismissError(); c.stt.clearError()
+        c.stt.start(settings.language.speechTag) { text ->
+            lastHeard = text
+            scope.launch {
+                val id = c.engine.latestOrNew(ChatMode.CHAT)
+                c.turns.submit(id, text, ChatMode.CHAT, speak = true)
+            }
+        }
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        micGranted = granted; micAsked = true
+        if (granted) listen()
+    }
+    fun onMicTap() {
+        if (!micGranted) { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO); return }
+        if (stt is SttState.Listening) c.stt.stopListening() else listen()
+    }
+    val micReq by c.micRequest.collectAsState()
+    LaunchedEffect(micReq) { if (micReq) { c.micRequest.value = false; onMicTap() } }
+    DisposableEffect(Unit) { onDispose { c.stt.cancel() } } // never leave the mic open off-screen
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -122,7 +168,7 @@ fun HomeScreen(
     Column(
         Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
     ) {
-        TopBar(onMenu = onMenu, onBell = { onNavigate(Routes.TODAY) }, onAvatar = { onNavigate(Routes.GENERAL) })
+        TopBar(onMenu = onMenu, onBell = { onNavigate(Routes.NOTIFS) }, onAvatar = { onNavigate(Routes.GENERAL) })
         Spacer(Modifier.height(8.dp))
 
         // Greeting + real status card
@@ -135,7 +181,7 @@ fun HomeScreen(
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
-            GlassCard(Modifier.width(132.dp), onClick = { onNavigate(Routes.TODAY) }, shape = RoundedCornerShape(20.dp), tint = UltronColors.Violet.copy(alpha = 0.10f)) {
+            GlassCard(Modifier.width(132.dp), onClick = { onNavigate(Routes.TODAY) }, shape = RoundedCornerShape(20.dp), tint = UltronColors.Blue.copy(alpha = 0.08f)) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(Icons.Filled.AlarmOn, null, tint = UltronColors.Gold)
                     Column {
@@ -160,26 +206,26 @@ fun HomeScreen(
             AvatarHero(
                 avatarId = settings.avatarId, state = state, level = level,
                 lowPerformance = settings.lowPerformance, reducedMotion = settings.reducedMotion,
-                onFailed = { avatarFailed = true }, onClick = { onNavigate(Routes.LIVE) },
+                onFailed = { avatarFailed = true }, onClick = ::onMicTap,
             )
             Spacer(Modifier.height(12.dp))
         } else Box(
-            Modifier.fillMaxWidth().padding(top = 8.dp).clickable { onNavigate(Routes.LIVE) }
-                .semantics { contentDescription = "ULTRON core. Live voice kholne ke liye tap karo" },
+            Modifier.fillMaxWidth().padding(top = 8.dp).clickable(onClick = ::onMicTap)
+                .semantics { contentDescription = "ULTRON core. Bolne ke liye tap karo" },
             contentAlignment = Alignment.Center,
         ) {
             UltronCore(state, level, Modifier.fillMaxWidth(0.94f), compact = true)
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth(0.58f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(Modifier.weight(1f).height(1.dp).background(UltronColors.Violet.copy(alpha = 0.6f)))
+                    Box(Modifier.weight(1f).height(1.dp).background(UltronColors.Blue.copy(alpha = 0.6f)))
                     Text("AI ASSISTANT", style = MaterialTheme.typography.labelSmall, color = UltronColors.TextHi)
-                    Box(Modifier.weight(1f).height(1.dp).background(UltronColors.Violet.copy(alpha = 0.6f)))
+                    Box(Modifier.weight(1f).height(1.dp).background(UltronColors.Blue.copy(alpha = 0.6f)))
                 }
                 Text(
                     "ULTRON",
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontSize = 38.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp,
-                        brush = Brush.horizontalGradient(listOf(UltronColors.Cyan, Color2, UltronColors.Magenta)),
+                        brush = Brush.horizontalGradient(listOf(UltronColors.Cyan, UltronColors.Blue, UltronColors.Violet)),
                     ),
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -193,6 +239,18 @@ fun HomeScreen(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp),
             )
         }
+
+        VoicePanel(
+            micGranted = micGranted, permanentlyDenied = micAsked && !hasMic(context),
+            onGrant = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+            onSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))) },
+            stt = stt, turn = turn, lastHeard = lastHeard, lastReply = lastReply,
+            onStop = { c.stt.cancel(); c.turns.cancel() },
+            onRetry = { c.turns.dismissError(); c.turns.retry(ChatMode.CHAT, true) },
+            onConsent = { scope.launch { c.turns.grantConsentAndRetry(ChatMode.CHAT, true) } },
+            onAiBrain = { c.turns.dismissError(); onNavigate(Routes.AI) },
+            onOpenChat = { onNavigate(Routes.chat()) },
+        )
 
         // Quick actions
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -232,10 +290,15 @@ fun HomeScreen(
             value = draft,
             onValueChange = { draft = it },
             placeholder = "ULTRON se kuch bhi poochho...",
+            busy = turn.busy,
+            onStop = { c.stt.cancel(); c.turns.cancel() },
             onSend = {
-                c.pendingPrompt.value = PendingPrompt(draft.trim(), autoSend = true)
-                draft = ""
-                onNavigate(Routes.chat())
+                val text = draft.trim(); draft = ""
+                if (text.isNotEmpty()) scope.launch {
+                    lastHeard = ""
+                    val id = c.engine.latestOrNew(ChatMode.CHAT)
+                    c.turns.submit(id, text, ChatMode.CHAT, speak = false)
+                }
             },
             onAttach = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
             attachBusy = ocrBusy,
@@ -249,14 +312,14 @@ private val Color2 = UltronColors.TextHi
 @Composable
 private fun TopBar(onMenu: () -> Unit, onBell: () -> Unit, onAvatar: () -> Unit) {
     Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
+        IconButton(onClick = onMenu, modifier = Modifier.size(46.dp).glass(CircleShape)) {
             Icon(Icons.Filled.Menu, contentDescription = "Menu kholo", modifier = Modifier.size(30.dp))
         }
         Text(
             "ULTRON", style = MaterialTheme.typography.titleLarge.copy(fontSize = 26.sp),
             textAlign = TextAlign.Center, modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onBell, modifier = Modifier.size(48.dp)) {
+        IconButton(onClick = onBell, modifier = Modifier.size(46.dp).glass(CircleShape)) {
             Icon(Icons.Filled.Notifications, contentDescription = "Reminders", modifier = Modifier.size(28.dp))
         }
         Spacer(Modifier.width(6.dp))
@@ -274,7 +337,7 @@ private fun TopBar(onMenu: () -> Unit, onBell: () -> Unit, onAvatar: () -> Unit)
 
 @Composable
 private fun QuickAction(label: String, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
-    GlassCard(modifier.height(56.dp), onClick = onClick, shape = RoundedCornerShape(22.dp)) {
+    GlassCard(modifier.height(56.dp), onClick = onClick, shape = RoundedCornerShape(28.dp)) {
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             Icon(icon, null, tint = UltronColors.TextHi, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(8.dp))
@@ -285,7 +348,7 @@ private fun QuickAction(label: String, icon: ImageVector, modifier: Modifier, on
 
 @Composable
 private fun InfoCard(title: String, icon: ImageVector, value: String, sub: String, modifier: Modifier, onClick: () -> Unit) {
-    GlassCard(modifier.height(92.dp), onClick = onClick, shape = RoundedCornerShape(22.dp)) {
+    GlassCard(modifier.height(108.dp), onClick = onClick, shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Icon(icon, null, tint = UltronColors.TextLo, modifier = Modifier.size(18.dp))
@@ -312,7 +375,7 @@ private fun stateLine(s: AssistantState) = when (s) {
     AssistantState.LISTENING -> "Sun raha hoon…"
     AssistantState.THINKING -> "Soch raha hoon…"
     AssistantState.SPEAKING -> "Bol raha hoon…"
-    AssistantState.OFFLINE -> "Offline — backend tak pahunch nahi paya"
+    AssistantState.OFFLINE -> "Offline — AI tak pahunch nahi paya"
     AssistantState.ERROR -> "Error aaya — details Chat mein hain"
 }
 
@@ -322,4 +385,51 @@ fun moodLabel(level: Int) = when (level) {
     3 -> "Theek"
     4 -> "Accha"
     else -> "Mast"
+}
+
+private fun hasMic(context: android.content.Context) =
+    ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+/** Voice + reply area on Home itself: partial transcript, streaming reply, errors, consent, permission. */
+@Composable
+private fun VoicePanel(
+    micGranted: Boolean, permanentlyDenied: Boolean, onGrant: () -> Unit, onSettings: () -> Unit,
+    stt: SttState, turn: com.ultron.ai.data.ai.TurnState, lastHeard: String, lastReply: String,
+    onStop: () -> Unit, onRetry: () -> Unit, onConsent: () -> Unit, onAiBrain: () -> Unit, onOpenChat: () -> Unit,
+) {
+    val partial = (stt as? SttState.Listening)?.partial.orEmpty()
+    val listening = stt is SttState.Listening
+    val show = !micGranted && (permanentlyDenied) || stt is SttState.Error || turn.error != null || turn.needsConsent ||
+        listening || turn.busy || turn.streaming.isNotEmpty() || lastReply.isNotEmpty() && (lastHeard.isNotEmpty() || turn.conversationId != null)
+    if (!show) { Spacer(Modifier.height(4.dp)); return }
+    GlassCard(Modifier.fillMaxWidth().padding(bottom = 12.dp), shape = RoundedCornerShape(24.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            when {
+                permanentlyDenied && !micGranted -> {
+                    Text("Mic permission Android ne block kar rakhi hai. Settings mein allow karo.", color = UltronColors.Gold, style = MaterialTheme.typography.bodyMedium)
+                    Button(onClick = onSettings) { Text("App settings kholo") }
+                }
+                stt is SttState.Error -> Text(stt.message, color = UltronColors.Gold, style = MaterialTheme.typography.bodyMedium)
+                turn.error != null -> {
+                    Text(turn.error.message, color = UltronColors.Red, style = MaterialTheme.typography.bodyMedium)
+                    if (turn.error.kind == ErrorKind.NOT_CONFIGURED || turn.error.kind == ErrorKind.UNAUTHORIZED)
+                        TextButton(onClick = onAiBrain) { Text("Gemini key / AI Brain kholo") }
+                    else TextButton(onClick = onRetry) { Text("Dobara try") }
+                }
+                turn.needsConsent -> {
+                    Text("Jawab ke liye cloud AI ki ijazat chahiye (tumhara text AI provider ko jayega).", color = UltronColors.Gold, style = MaterialTheme.typography.bodyMedium)
+                    Button(onClick = onConsent) { Text("Allow karo") }
+                }
+                listening -> Text(partial.ifEmpty { "Sun raha hoon… bolo" }, style = MaterialTheme.typography.bodyLarge)
+                turn.streaming.isNotEmpty() -> Text(turn.streaming, style = MaterialTheme.typography.bodyLarge)
+                turn.busy -> Text(if (lastHeard.isNotEmpty()) "“$lastHeard”" else "Soch raha hoon…", color = UltronColors.TextLo, style = MaterialTheme.typography.bodyLarge)
+                lastReply.isNotEmpty() -> {
+                    if (lastHeard.isNotEmpty()) Text("“$lastHeard”", color = UltronColors.TextLo, style = MaterialTheme.typography.bodyMedium)
+                    Text(lastReply, style = MaterialTheme.typography.bodyLarge, maxLines = 12, overflow = TextOverflow.Ellipsis)
+                    TextButton(onClick = onOpenChat) { Text("Poori history Chat mein") }
+                }
+            }
+            if (listening || turn.busy) TextButton(onClick = onStop) { Text("Roko") }
+        }
+    }
 }

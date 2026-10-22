@@ -124,7 +124,7 @@ fun ChatScreen(study: Boolean, onBack: () -> Unit, onNavigate: (String) -> Unit)
             ErrorBanner(
                 message = err.message,
                 primary = if (err.kind?.retryable == true || err.kind == ErrorKind.RATE_LIMITED || err.kind == null) "Dobara try" to { vm.dismiss(); vm.retry() } else null,
-                secondary = if (err.kind == ErrorKind.NOT_CONFIGURED || err.kind == ErrorKind.UNAUTHORIZED) "Connectivity" to { vm.dismiss(); onNavigate(Routes.CONNECT) } else null,
+                secondary = if (err.kind == ErrorKind.NOT_CONFIGURED || err.kind == ErrorKind.UNAUTHORIZED) "AI Brain" to { vm.dismiss(); onNavigate(Routes.AI) } else null,
                 onDismiss = { vm.dismiss() },
             )
         }
@@ -140,8 +140,8 @@ fun ChatScreen(study: Boolean, onBack: () -> Unit, onNavigate: (String) -> Unit)
                     onStop = { vm.cancel() },
                 )
             }
-            IconButton(onClick = { onNavigate(Routes.LIVE) }, modifier = Modifier.size(52.dp).clip(RoundedCornerShape(26.dp)).background(UltronColors.Violet.copy(alpha = 0.25f))) {
-                Icon(Icons.Filled.Mic, contentDescription = "Live voice")
+            IconButton(onClick = { c.micRequest.value = true; onNavigate(Routes.HOME) }, modifier = Modifier.size(52.dp).clip(RoundedCornerShape(26.dp)).background(UltronColors.Blue.copy(alpha = 0.25f))) {
+                Icon(Icons.Filled.Mic, contentDescription = "Bolo (Home par)")
             }
         }
     }

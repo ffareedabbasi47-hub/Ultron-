@@ -273,3 +273,16 @@ test('persona prompt carries identity rules and language/style switches', () => 
   assert.match(p, /clear English/);
   assert.match(p, /detailed explanations/);
 });
+
+test('user rules reach the persona prompt, are length-limited, and cannot override identity', async () => {
+  const p = buildSystemPrompt({ creator: 'Fardeen', rules: 'Always answer in two lines.' });
+  assert.match(p, /Always answer in two lines\./);
+  assert.match(p, /Mujhe Fardeen ne banaya hai/);
+  const { validateChatBody } = await import('../src/validate.js');
+  const cfg = { maxMessages: 10, maxMessageChars: 1000, models: ['m'] };
+  const base = { messages: [{ role: 'user', text: 'hi' }] };
+  assert.equal(validateChatBody({ ...base, rules: 'x'.repeat(601) }, cfg).ok, false);
+  assert.equal(validateChatBody({ ...base, rules: 42 }, cfg).ok, false);
+  assert.equal(validateChatBody({ ...base, rules: '  be brief ' }, cfg).value.rules, 'be brief');
+  assert.equal(validateChatBody(base, cfg).value.rules, '');
+});

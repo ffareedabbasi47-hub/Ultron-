@@ -9,7 +9,7 @@ export function validateChatBody(body, cfg) {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
     return { ok: false, error: 'Body must be a JSON object.' };
   }
-  const { messages, style = 'short', language = 'hinglish', mode = 'chat', model } = body;
+  const { messages, style = 'short', language = 'hinglish', mode = 'chat', model, rules } = body;
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return { ok: false, error: 'messages must be a non-empty array.' };
@@ -38,6 +38,12 @@ export function validateChatBody(body, cfg) {
   if (!LANGS.has(language)) return { ok: false, error: 'Invalid language.' };
   if (!MODES.has(mode)) return { ok: false, error: 'Invalid mode.' };
 
+  let cleanRules = '';
+  if (rules !== undefined && rules !== null) {
+    if (typeof rules !== 'string' || rules.length > 600) return { ok: false, error: 'Invalid rules (max 600 chars).' };
+    cleanRules = rules.trim();
+  }
+
   let chosenModel = cfg.models[0];
   if (model !== undefined && model !== null && model !== '') {
     if (typeof model !== 'string' || !cfg.models.includes(model)) {
@@ -47,5 +53,5 @@ export function validateChatBody(body, cfg) {
   }
   if (!chosenModel) return { ok: false, error: 'No model configured on the backend.', status: 503 };
 
-  return { ok: true, value: { messages: clean, style, language, mode, model: chosenModel } };
+  return { ok: true, value: { messages: clean, style, language, mode, model: chosenModel, rules: cleanRules } };
 }

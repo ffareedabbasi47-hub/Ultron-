@@ -15,6 +15,8 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         MoodEntity::class,
         MemoryEntity::class,
         ReminderEntity::class,
+        WorkDocEntity::class,
+        MarketEntity::class,
     ],
     version = 1,
     exportSchema = true,
@@ -25,6 +27,8 @@ abstract class UltronDatabase : RoomDatabase() {
     abstract fun mood(): MoodDao
     abstract fun memory(): MemoryDao
     abstract fun reminders(): ReminderDao
+    abstract fun workDocs(): WorkDocDao
+    abstract fun markets(): MarketDao
 
     companion object {
         private const val NAME = "ultron.db"

@@ -5,6 +5,8 @@ import com.ultron.ai.core.diagnostics.DiagnosticsLog
 import com.ultron.ai.core.diagnostics.LatencyStats
 import com.ultron.ai.core.security.SecureStore
 import com.ultron.ai.data.ai.AIProvider
+import com.ultron.ai.data.ai.GeminiDirectProvider
+import com.ultron.ai.data.ai.RoutingProvider
 import com.ultron.ai.data.ai.AssistantEngine
 import com.ultron.ai.data.ai.ProxyProvider
 import com.ultron.ai.data.db.UltronDatabase
@@ -22,6 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 
 /** Manual dependency container (small app: no DI framework needed). */
@@ -41,7 +44,10 @@ class AppContainer(app: Application) {
     /** No logging interceptor is installed: request/response bodies are never logged. */
     val http: OkHttpClient = OkHttpClient.Builder().build()
 
-    val provider: AIProvider = ProxyProvider(settings, http, diagnostics)
+    private val proxyProvider = ProxyProvider(settings, http, diagnostics)
+    val geminiDirect = GeminiDirectProvider(settings, http, diagnostics)
+    /** Uses the user's own Gemini key when saved (fastest, one hop), else the ULTRON backend proxy. */
+    val provider: AIProvider = RoutingProvider(settings, proxyProvider, geminiDirect)
     val tts = TtsController(app, diagnostics, latency)
     val stt = SttController(app, diagnostics)
     val reminders = ReminderScheduler(app, db.reminders())
@@ -56,9 +62,13 @@ class AppContainer(app: Application) {
 
     /** Text handed from another screen (Home composer, Scan) to the Chat screen. */
     val pendingPrompt = MutableStateFlow<PendingPrompt?>(null)
+    /** Set by the dock mic; Home consumes it and toggles listening there. */
+    val micRequest = MutableStateFlow(false)
 
     /** Real, app-wide assistant state shown by the core animation on every screen. */
     val assistantState = MutableStateFlow(AssistantState.IDLE)
+
+    init { appScope.launch { geminiDirect.prewarm() } }
 
     val turns = TurnController(engine, tts, stt, settings, diagnostics, appScope, assistantState)
 }

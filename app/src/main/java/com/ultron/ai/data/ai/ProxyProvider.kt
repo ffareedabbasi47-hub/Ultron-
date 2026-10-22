@@ -33,6 +33,7 @@ import okhttp3.Response
     val language: String,
     val mode: String,
     val model: String? = null,
+    val rules: String? = null,
 )
 @Serializable private data class HealthDto(
     val ok: Boolean = false,
@@ -132,6 +133,7 @@ class ProxyProvider(
             language = request.language.wire,
             mode = request.mode.wire,
             model = request.model,
+            rules = request.rules.ifBlank { null },
         )
         val httpRequest = Request.Builder()
             .url(base.resolve("v1/chat/stream")!!)

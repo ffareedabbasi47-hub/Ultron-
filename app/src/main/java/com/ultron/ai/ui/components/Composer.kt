@@ -74,7 +74,7 @@ fun ComposerBar(
             modifier = Modifier
                 .size(48.dp)
                 .clip(CircleShape)
-                .background(if (active) UltronColors.Violet.copy(alpha = 0.85f) else UltronColors.Violet.copy(alpha = 0.18f)),
+                .background(if (active) UltronColors.Blue.copy(alpha = 0.9f) else UltronColors.Blue.copy(alpha = 0.2f)),
         ) {
             if (busy) Icon(Icons.Filled.Stop, contentDescription = "Rokho", tint = Color.White)
             else Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Bhejo", tint = Color.White)

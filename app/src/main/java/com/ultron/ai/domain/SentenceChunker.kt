@@ -4,8 +4,9 @@ package com.ultron.ai.domain
  * Turns streamed text deltas into speakable sentences so TTS can start before the full reply
  * arrives (incremental synthesis). Pure logic, no Android dependencies.
  */
-class SentenceChunker(private val minChunkChars: Int = 24, private val maxChunkChars: Int = 280) {
+class SentenceChunker(private val minChunkChars: Int = 24, private val maxChunkChars: Int = 280, private val firstChunkMinChars: Int = minOf(12, minChunkChars)) {
     private val buffer = StringBuilder()
+    private var emitted = false
 
     /** Feed a delta; returns zero or more complete chunks ready to speak. */
     fun feed(delta: String): List<String> {
@@ -15,7 +16,7 @@ class SentenceChunker(private val minChunkChars: Int = 24, private val maxChunkC
             val cut = findCut() ?: break
             val chunk = buffer.substring(0, cut).trim()
             buffer.delete(0, cut)
-            if (chunk.isNotEmpty()) out += chunk
+            if (chunk.isNotEmpty()) { out += chunk; emitted = true }
         }
         return out
     }
@@ -24,17 +25,18 @@ class SentenceChunker(private val minChunkChars: Int = 24, private val maxChunkC
     fun flush(): String? {
         val rest = buffer.toString().trim()
         buffer.clear()
+        emitted = false
         return rest.ifEmpty { null }
     }
 
-    fun reset() = buffer.clear()
+    fun reset() { buffer.clear(); emitted = false }
 
     private fun findCut(): Int? {
         var i = 0
         while (i < buffer.length) {
             val c = buffer[i]
             val isEnd = c == '.' || c == '!' || c == '?' || c == '।' || c == '\n'
-            if (isEnd && i + 1 >= minChunkChars) {
+            if (isEnd && i + 1 >= (if (emitted) minChunkChars else firstChunkMinChars)) {
                 val next = buffer.getOrNull(i + 1)
                 // Do not cut inside "3.5" or "e.g.x": require whitespace/end after the mark.
                 if (next == null || next.isWhitespace()) {

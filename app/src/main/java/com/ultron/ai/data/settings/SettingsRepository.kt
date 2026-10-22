@@ -43,8 +43,12 @@ data class UltronSettings(
     val speakReplies: Boolean = true,
 
     val responseStyle: ResponseStyle = ResponseStyle.SHORT,
-    val historyTurns: Int = 12,
+    val historyTurns: Int = 8,
     val selectedModel: String? = null,
+    /** Model used when the user's own Gemini key is saved (direct route). */
+    val geminiModel: String = "gemini-3.5-flash-lite",
+    /** Standing user preferences appended to the system prompt ("ULTRON ke rules"). */
+    val customRules: String = "",
     val cloudConsent: Boolean = false,
 
     val streaming: Boolean = true,
@@ -73,9 +77,14 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
     fun accessToken(): String? = secure.getString(TOKEN_NAME)
     fun setAccessToken(token: String?) = secure.putString(TOKEN_NAME, token?.trim())
 
+    /** The user's own Gemini API key (encrypted with the Keystore). Never logged, never in the APK. */
+    fun geminiKey(): String? = secure.getString(GEMINI_KEY_NAME)?.takeIf { it.isNotBlank() }
+    fun setGeminiKey(key: String?) = secure.putString(GEMINI_KEY_NAME, key?.trim())
+
     suspend fun resetAll() {
         store.edit { it.clear() }
         secure.putString(TOKEN_NAME, null)
+        secure.putString(GEMINI_KEY_NAME, null)
     }
 
     private fun Preferences.toSettings(): UltronSettings {
@@ -96,6 +105,8 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
             responseStyle = enumOr(this[K_STYLE], d.responseStyle),
             historyTurns = this[K_HISTORY] ?: d.historyTurns,
             selectedModel = this[K_MODEL],
+            geminiModel = this[K_GEMINI_MODEL] ?: d.geminiModel,
+            customRules = this[K_RULES] ?: d.customRules,
             cloudConsent = this[K_CONSENT] ?: d.cloudConsent,
             streaming = this[K_STREAM] ?: d.streaming,
             timeoutSec = this[K_TIMEOUT] ?: d.timeoutSec,
@@ -121,6 +132,8 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
         this[K_STYLE] = s.responseStyle.name
         this[K_HISTORY] = s.historyTurns
         setOrRemove(K_MODEL, s.selectedModel)
+        this[K_GEMINI_MODEL] = s.geminiModel
+        this[K_RULES] = s.customRules
         this[K_CONSENT] = s.cloudConsent
         this[K_STREAM] = s.streaming
         this[K_TIMEOUT] = s.timeoutSec
@@ -141,6 +154,7 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
 
     private companion object {
         const val TOKEN_NAME = "backend_access_token"
+        const val GEMINI_KEY_NAME = "gemini_api_key"
         val K_NAME = stringPreferencesKey("user_name")
         val K_LANG = stringPreferencesKey("language")
         val K_THEME = stringPreferencesKey("theme")
@@ -156,6 +170,8 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
         val K_STYLE = stringPreferencesKey("response_style")
         val K_HISTORY = intPreferencesKey("history_turns")
         val K_MODEL = stringPreferencesKey("selected_model")
+        val K_GEMINI_MODEL = stringPreferencesKey("gemini_model")
+        val K_RULES = stringPreferencesKey("custom_rules")
         val K_CONSENT = booleanPreferencesKey("cloud_consent")
         val K_STREAM = booleanPreferencesKey("streaming")
         val K_TIMEOUT = intPreferencesKey("timeout_sec")
