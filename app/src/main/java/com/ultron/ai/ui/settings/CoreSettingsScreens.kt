@@ -291,7 +291,7 @@ fun PrivacyScreen(settings: UltronSettings, onBack: () -> Unit) {
         SectionLabel("ULTRON ke rules")
         var rules by remember(settings.customRules) { mutableStateOf(settings.customRules) }
         OutlinedTextField(value = rules, onValueChange = { rules = it.take(600) }, label = { Text("Apne rules (max 600 akshar)") }, minLines = 2, modifier = Modifier.fillMaxWidth())
-        Button(onClick = { update { it.copy(customRules = rules.trim()) } }, enabled = rules.trim() != settings.customRules) { Text("Rules save") }
+        Button(onClick = { scope.launch { c.settings.update { it.copy(customRules = rules.trim()) } } }, enabled = rules.trim() != settings.customRules) { Text("Rules save") }
         Text("Ye rules har jawab ke saath jate hain, par identity/honesty/safety rules se upar nahi.", color = UltronColors.TextLo, style = MaterialTheme.typography.bodySmall)
 
         SectionLabel("Cloud")

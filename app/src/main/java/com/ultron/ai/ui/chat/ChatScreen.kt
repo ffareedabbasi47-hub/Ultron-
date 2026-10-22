@@ -35,6 +35,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -64,6 +65,7 @@ import com.ultron.ai.ui.theme.UltronColors
 import kotlinx.coroutines.launch
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun ChatScreen(study: Boolean, onBack: () -> Unit, onNavigate: (String) -> Unit) {
     val mode = if (study) ChatMode.STUDY else ChatMode.CHAT
     val vm = containerViewModel(key = "chat-${mode.wire}") { ChatViewModel(it, mode) }
