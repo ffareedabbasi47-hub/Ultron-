@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.ultron.ai.data.settings.UltronSettings
 import com.ultron.ai.platform.voice.VoiceInfo
+import com.ultron.ai.platform.voice.VoiceRanker
 import com.ultron.ai.ui.LocalContainer
 import com.ultron.ai.ui.components.GlassCard
 import com.ultron.ai.ui.components.ScreenHeader
@@ -42,7 +43,7 @@ import com.ultron.ai.ui.components.StatusPill
 import com.ultron.ai.ui.theme.UltronColors
 import kotlinx.coroutines.launch
 
-private const val SAMPLE = "Systems ready. Batao, kya solve karna hai?"
+private const val SAMPLE = "Main sun raha hoon. Soch samajh kar bolna, kyunki main kuch bhi bhoolta nahi."
 
 @Composable
 fun VoiceStudioScreen(settings: UltronSettings, onBack: () -> Unit) {
@@ -50,7 +51,6 @@ fun VoiceStudioScreen(settings: UltronSettings, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val tts by c.tts.state.collectAsState()
-    var filter by remember { mutableStateOf(0) } // 0 = Indian hi/en, 1 = all
     val micOk = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     fun update(block: (UltronSettings) -> UltronSettings) = scope.launch { c.settings.update(block) }
@@ -86,13 +86,17 @@ fun VoiceStudioScreen(settings: UltronSettings, onBack: () -> Unit) {
         SliderRow("Speed", settings.ttsRate, 0.5f..1.5f) { v -> update { it.copy(ttsRate = v) } }
         SliderRow("Pitch (kam = gehri awaaz)", settings.ttsPitch, 0.5f..1.5f) { v -> update { it.copy(ttsPitch = v) } }
         SliderRow("Volume", settings.ttsVolume, 0.2f..1f) { v -> update { it.copy(ttsVolume = v) } }
-        OutlinedButton(onClick = {
-            val s = settings.copy(ttsRate = 0.9f, ttsPitch = 0.78f)
-            update { it.copy(ttsRate = 0.9f, ttsPitch = 0.78f) }
-            preview(s)
-        }) { Text("Deep cinematic preset") }
+        Text("Presets", style = MaterialTheme.typography.labelSmall, color = UltronColors.TextLo, modifier = Modifier.padding(top = 6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(Triple("Ultron (khatarnak)", 0.86f, 0.62f), Triple("Gehri shaant", 0.92f, 0.78f), Triple("Normal", 1.0f, 1.0f)).forEach { (label, rate, pitch) ->
+                OutlinedButton(onClick = {
+                    update { it.copy(ttsRate = rate, ttsPitch = pitch) }
+                    preview(settings.copy(ttsRate = rate, ttsPitch = pitch))
+                }) { Text(label, maxLines = 1) }
+            }
+        }
         Text(
-            "Preset sirf speed/pitch badalta hai. Awaaz kitni natural lagegi wo aapke device ke TTS engine/voice par depend karti hai; ye kisi film character ki awaaz nahi hai.",
+            "Preset sirf speed/pitch badalta hai. Awaaz kitni natural lagegi wo voice par depend karti hai — neeche sirf sabse achchi online/high-quality voices dikhti hain. Ye kisi film character ki awaaz nahi hai.",
             style = MaterialTheme.typography.bodyMedium, color = UltronColors.TextLo, modifier = Modifier.padding(top = 6.dp),
         )
         SwitchRow("Jawab bolkar sunao", "Chat aur Live dono mein ULTRON ke jawab bole jayenge.", settings.speakReplies) { v -> update { it.copy(speakReplies = v) } }
@@ -111,14 +115,11 @@ fun VoiceStudioScreen(settings: UltronSettings, onBack: () -> Unit) {
             catch (_: Exception) { /* settings page not exposed on this device */ }
         }) { Text("Android TTS settings / voice data install") }
 
-        SectionLabel("Voices (${tts.voices.size} mile)")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = filter == 0, onClick = { filter = 0 }, label = { Text("Hindi / English") })
-            FilterChip(selected = filter == 1, onClick = { filter = 1 }, label = { Text("Sab") })
-        }
-        val shown = tts.voices.filter { filter == 1 || it.localeTag.startsWith("hi") || it.localeTag.startsWith("en") }
-        if (shown.isEmpty()) Text("Is filter mein koi voice nahi. \"Sab\" try karo ya TTS settings mein voice data install karo.", color = UltronColors.TextLo, modifier = Modifier.padding(top = 8.dp))
-        shown.forEach { v -> VoiceRow(v, selected = settings.ttsVoice == v.name, onPick = {
+        val shown = remember(tts.voices, settings.language) { VoiceRanker.shortlist(tts.voices, settings.language.speechTag) }
+        SectionLabel("Sabse achchi voices (${shown.size})")
+        if (shown.isEmpty()) Text("Koi achchi voice nahi mili. Android TTS settings mein Google voice data install karo, phir wapas aao.", color = UltronColors.TextLo, modifier = Modifier.padding(top = 8.dp))
+        else Text("Online voices zyada natural hoti hain par internet chahiye; offline wali bina internet chalti hain.", color = UltronColors.TextLo, style = MaterialTheme.typography.bodyMedium)
+        shown.forEach { v -> VoiceRow(v, selected = (settings.ttsVoice ?: tts.activeVoice) == v.name, onPick = {
             update { it.copy(ttsVoice = v.name) }
             preview(settings.copy(ttsVoice = v.name))
         }) }

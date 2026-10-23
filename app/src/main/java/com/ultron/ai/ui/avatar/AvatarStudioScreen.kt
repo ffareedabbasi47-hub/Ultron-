@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
@@ -69,6 +70,7 @@ fun AvatarStudioScreen(settings: UltronSettings, onBack: () -> Unit) {
     val customs by c.avatars.items.collectAsState()
     val assistant by c.assistantState.collectAsState()
     var status by remember { mutableStateOf<AvatarStatus>(AvatarStatus.Loading) }
+    var expr by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var url by remember { mutableStateOf("") }
     var progress by remember { mutableStateOf<Pair<Long, Long>?>(null) }
@@ -94,13 +96,17 @@ fun AvatarStudioScreen(settings: UltronSettings, onBack: () -> Unit) {
         ScreenHeader("Avatar Studio", onBack)
 
         // ---- live preview
-        Box(
-            Modifier.fillMaxWidth().height(340.dp).clip(RoundedCornerShape(24.dp))
-                .border(1.dp, UltronColors.Violet.copy(alpha = 0.35f), RoundedCornerShape(24.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
+        Box(Modifier.fillMaxWidth().height(340.dp), contentAlignment = Alignment.Center) {
             if (selected == AvatarIds.CORE) UltronCore(assistant, 0f, Modifier.fillMaxWidth(0.8f))
-            else AvatarView(selected, assistant, settings.lowPerformance, settings.reducedMotion, Modifier.fillMaxSize(), onStatus = { status = it })
+            else AvatarView(selected, assistant, settings.lowPerformance, settings.reducedMotion, Modifier.fillMaxSize(), expression = expr, onStatus = { status = it })
+        }
+        if (selected == AvatarIds.ULTRON3D) {
+            Text("Expression (built-in model)", style = MaterialTheme.typography.labelSmall, color = UltronColors.TextLo, modifier = Modifier.padding(top = 6.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(null to "Auto", "calm" to "Calm", "menacing" to "Khatarnak", "smirk" to "Smirk", "curious" to "Curious", "alert" to "Alert", "surprised" to "Surprised", "calculating" to "Calculating", "cold" to "Cold").forEach { (k, label) ->
+                    androidx.compose.material3.FilterChip(selected = expr == k, onClick = { expr = k }, label = { Text(label) })
+                }
+            }
         }
         Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             when {
@@ -109,7 +115,7 @@ fun AvatarStudioScreen(settings: UltronSettings, onBack: () -> Unit) {
                 status is AvatarStatus.Error -> StatusPill("Load nahi hua", UltronColors.Red)
                 else -> StatusPill("Load ho raha hai", UltronColors.Gold)
             }
-            Text("Drag karke ghumao, pinch nahi (zoom band hai).", style = MaterialTheme.typography.labelSmall, color = UltronColors.TextLo)
+            Text("Model hamesha saamne dekhta hai; bolte waqt muh hilta hai.", style = MaterialTheme.typography.labelSmall, color = UltronColors.TextLo)
         }
         (status as? AvatarStatus.Error)?.takeIf { selected != AvatarIds.CORE }?.let {
             Text(it.message + "\nHome screen par tab tak 2D core dikhega.", color = UltronColors.Gold, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))

@@ -154,7 +154,6 @@ private val menu = listOf(
     MenuGroup("SYSTEM", listOf(
         MenuItem("Settings", Routes.SETTINGS, Icons.Filled.Settings),
         MenuItem("ULTRON ke rules", Routes.RULES, Icons.Filled.VerifiedUser),
-        MenuItem("PC + Phone", Routes.PC, Icons.Filled.Devices, "Setup chahiye"),
         MenuItem("Privacy aur Data", Routes.PRIVACY, Icons.Filled.Lock),
         MenuItem("Activity", Routes.ACTIVITY, Icons.Filled.History),
         MenuItem("Diagnostics", Routes.DIAG, Icons.Filled.BugReport),

@@ -13,6 +13,7 @@ import com.ultron.ai.data.db.UltronDatabase
 import com.ultron.ai.data.settings.SettingsRepository
 import com.ultron.ai.data.weather.WeatherRepository
 import com.ultron.ai.domain.IdentityResponder
+import com.ultron.ai.domain.SmallTalk
 import com.ultron.ai.platform.actions.DeviceActionRunner
 import com.ultron.ai.platform.reminders.ReminderScheduler
 import com.ultron.ai.platform.vision.OcrEngine
@@ -53,7 +54,7 @@ class AppContainer(app: Application) {
     val reminders = ReminderScheduler(app, db.reminders())
     val actions = DeviceActionRunner(app, db.memory(), reminders, tts)
     val identity = IdentityResponder(BuildConfig.CREATOR_NAME)
-    val engine = AssistantEngine(db.conversations(), provider, settings, identity, actions, latency, diagnostics)
+    val engine = AssistantEngine(db.conversations(), provider, settings, identity, SmallTalk(BuildConfig.CREATOR_NAME), actions, latency, diagnostics)
     val weather = WeatherRepository(settings, http, diagnostics)
     val ocr = OcrEngine(app)
     val avatars = AvatarRepository(app, http, diagnostics)

@@ -24,21 +24,31 @@ enum class ResponseStyle(val wire: String, val label: String) {
     DETAILED("detailed", "Detailed"),
 }
 
-enum class ThemeVariant(val label: String) { PURPLE("Deep purple"), AMOLED("AMOLED black") }
+enum class ThemeVariant(val label: String) {
+    NAVY("Midnight navy"), PURPLE("Deep purple"), CRIMSON("Ultron red"), EMERALD("Emerald"), GOLD("Gold"), ICE("Ice blue"), AMOLED("AMOLED black"),
+}
+
+/** System font families only (no downloads, no licensing issues). */
+enum class AppFont(val label: String) {
+    DEFAULT("Sans (default)"), CONDENSED("Condensed (sci-fi)"), SERIF("Serif"), MONO("Monospace"), CASUAL("Casual"), CURSIVE("Cursive"),
+}
 
 data class UltronSettings(
     val userName: String = BuildConfig.CREATOR_NAME,
     val language: AppLanguage = AppLanguage.HINGLISH,
-    val theme: ThemeVariant = ThemeVariant.PURPLE,
+    val theme: ThemeVariant = ThemeVariant.NAVY,
+    val font: AppFont = AppFont.DEFAULT,
+    /** Text size multiplier on top of the system font scale. */
+    val textScale: Float = 1f,
     val reducedMotion: Boolean = false,
     val lowPerformance: Boolean = false,
     /** "core" (2D animated core), "ultron3d" (built-in 3D avatar) or "custom:<file>.glb". */
-    val avatarId: String = "core",
+    val avatarId: String = "ultron3d",
 
     val ttsEngine: String? = null,
     val ttsVoice: String? = null,
-    val ttsRate: Float = 0.9f,
-    val ttsPitch: Float = 0.78f,
+    val ttsRate: Float = 0.86f,
+    val ttsPitch: Float = 0.66f,
     val ttsVolume: Float = 1f,
     val speakReplies: Boolean = true,
 
@@ -93,6 +103,8 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
             userName = this[K_NAME] ?: d.userName,
             language = enumOr(this[K_LANG], d.language),
             theme = enumOr(this[K_THEME], d.theme),
+            font = enumOr(this[K_FONT], d.font),
+            textScale = (this[K_TEXT_SCALE] ?: d.textScale).coerceIn(0.85f, 1.35f),
             reducedMotion = this[K_REDUCED] ?: d.reducedMotion,
             lowPerformance = this[K_LOWPERF] ?: d.lowPerformance,
             avatarId = this[K_AVATAR] ?: d.avatarId,
@@ -120,6 +132,8 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
         this[K_NAME] = s.userName
         this[K_LANG] = s.language.name
         this[K_THEME] = s.theme.name
+        this[K_FONT] = s.font.name
+        this[K_TEXT_SCALE] = s.textScale
         this[K_REDUCED] = s.reducedMotion
         this[K_LOWPERF] = s.lowPerformance
         this[K_AVATAR] = s.avatarId
@@ -158,6 +172,8 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
         val K_NAME = stringPreferencesKey("user_name")
         val K_LANG = stringPreferencesKey("language")
         val K_THEME = stringPreferencesKey("theme")
+        val K_FONT = stringPreferencesKey("font")
+        val K_TEXT_SCALE = floatPreferencesKey("text_scale")
         val K_REDUCED = booleanPreferencesKey("reduced_motion")
         val K_LOWPERF = booleanPreferencesKey("low_performance")
         val K_AVATAR = stringPreferencesKey("avatar_id")

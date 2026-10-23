@@ -116,3 +116,12 @@ Standalone viewer: open `ultron-avatar.html` in a browser (⚙ opens the control
 
 ### Guide-alignment pass
 Markets now has Watchlist/Portfolio/Analysis (NSE/BSE label, validated symbols, manual prices only). Marketing has Business/Content/Calendar. Documents/Coding can import text files. Settings hub is searchable and grouped (Personal, Assistant, Connectors, Backup, Advanced, Optional, Battery saver, Appearance, Activity); new Voice engine, Connectors, Backup, Privacy Policy and Accessibility/Battery screens report real status only. Yaadein has source filters and named delete confirmation; Chat has copy and clear chat. Drawer/dock/top bar follow the reference screenshots. Not available (stated in-app): live market data, connectors, PC pairing, Voice Guardian, Screen Samjho (MediaProjection), QR scanning, wake word. Android layer is still uncompiled here (no Google Maven access in this sandbox).
+
+## Latest changes
+- Home fits one screen (MAYA-style layout); conversation shows only in Chat.
+- 7 colour themes (Midnight navy, Deep purple, Ultron red, Emerald, Gold, Ice blue, AMOLED), 6 system font styles and a text-size slider (Settings > General).
+- Voice list shows only the best online/high-quality voices; best one is auto-picked.
+- Original menacing-calm persona (no film dialogue, no actor voice).
+- Transparent, forward-facing 3D avatar with expressions (lip-sync is approximate; TTS gives no phoneme data).
+- Removed rows for features that do not exist (connectors, guardian, sub-agents, maps, screen understanding, web search, PC link).
+- Tests: `backend` `npm test`; Kotlin unit tests under `app/src/test`. The Android layer has not been compiled in this environment; build via GitHub Actions / Android Studio.

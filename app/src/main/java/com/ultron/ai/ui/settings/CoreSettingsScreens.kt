@@ -3,6 +3,8 @@ package com.ultron.ai.ui.settings
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -61,6 +63,7 @@ private fun Page(title: String, onBack: () -> Unit, content: @Composable () -> U
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun GeneralScreen(settings: UltronSettings, onBack: () -> Unit) {
     val c = LocalContainer.current
@@ -79,10 +82,22 @@ fun GeneralScreen(settings: UltronSettings, onBack: () -> Unit) {
         }
         Text("Ye ULTRON ke jawab ki language aur speech recognition ka locale tay karta hai.", style = MaterialTheme.typography.bodyMedium, color = UltronColors.TextLo)
 
-        SectionLabel("Theme aur motion")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ThemeVariant.entries.forEach { t -> FilterChip(selected = settings.theme == t, onClick = { update { it.copy(theme = t) } }, label = { Text(t.label) }) }
+        SectionLabel("Theme")
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            ThemeVariant.entries.forEach { t ->
+                val p = com.ultron.ai.ui.theme.Palettes.of(t)
+                FilterChip(
+                    selected = settings.theme == t, onClick = { update { it.copy(theme = t) } }, label = { Text(t.label) },
+                    leadingIcon = { androidx.compose.foundation.layout.Box(Modifier.size(14.dp).background(p.primary, androidx.compose.foundation.shape.CircleShape)) },
+                )
+            }
         }
+        SectionLabel("Font aur text size")
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            com.ultron.ai.data.settings.AppFont.entries.forEach { f -> FilterChip(selected = settings.font == f, onClick = { update { it.copy(font = f) } }, label = { Text(f.label) }) }
+        }
+        SliderRow("Text size", settings.textScale, 0.85f..1.35f) { v -> update { it.copy(textScale = v) } }
+        SectionLabel("Motion")
         SwitchRow("Reduced motion", "Core aur equalizer ki animation band (static).", settings.reducedMotion) { v -> update { it.copy(reducedMotion = v) } }
         SwitchRow("Low performance mode", "Kam layers/particles — purane phone ke liye.", settings.lowPerformance) { v -> update { it.copy(lowPerformance = v) } }
 

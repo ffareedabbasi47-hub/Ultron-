@@ -64,6 +64,8 @@ fun AvatarView(
     lowPerformance: Boolean,
     reducedMotion: Boolean,
     modifier: Modifier = Modifier,
+    /** null = automatic (follows the assistant state); otherwise one of the page's expression names. */
+    expression: String? = null,
     onStatus: (AvatarStatus) -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -98,6 +100,7 @@ fun AvatarView(
         }
     }
     LaunchedEffect(pageReady, state) { if (pageReady) js("UltronAvatar.setState('${moodFor(state)}')") }
+    LaunchedEffect(pageReady, expression) { if (pageReady) js("UltronAvatar.setExpression(${if (expression == null) "null" else JSONObject.quote(expression)})") }
     LaunchedEffect(pageReady, lowPerformance) { if (pageReady) js("UltronAvatar.setQuality('${if (lowPerformance) "low" else "high"}')") }
     LaunchedEffect(pageReady, reducedMotion) { if (pageReady) js("UltronAvatar.setReduced($reducedMotion)") }
 
@@ -121,7 +124,7 @@ fun AvatarView(
                 .addPathHandler("/avatars/", WebViewAssetLoader.InternalStoragePathHandler(ctx, container.avatars.dir))
                 .build()
             WebView(ctx).apply {
-                setBackgroundColor(0xFF07060D.toInt())
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
                 setLayerType(View.LAYER_TYPE_HARDWARE, null)
                 isVerticalScrollBarEnabled = false
                 isHorizontalScrollBarEnabled = false

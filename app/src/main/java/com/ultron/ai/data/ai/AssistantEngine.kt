@@ -12,6 +12,7 @@ import com.ultron.ai.domain.ChatTurn
 import com.ultron.ai.domain.CommandParser
 import com.ultron.ai.domain.ContextBuilder
 import com.ultron.ai.domain.IdentityResponder
+import com.ultron.ai.domain.SmallTalk
 import com.ultron.ai.domain.Persona
 import com.ultron.ai.domain.UltronAction
 import kotlinx.coroutines.CancellationException
@@ -39,6 +40,7 @@ class AssistantEngine(
     private val provider: AIProvider,
     private val settings: SettingsRepository,
     private val identity: IdentityResponder,
+    private val smallTalk: SmallTalk,
     private val actions: ActionRunner,
     private val stats: LatencyStats,
     private val diagnostics: DiagnosticsLog,
@@ -69,6 +71,13 @@ class AssistantEngine(
 
         // 1) identity: identical online/offline/voice/text
         identity.respond(text)?.let { reply ->
+            saveAssistant(conversationId, reply, MessageEntity.SOURCE_LOCAL)
+            emit(AssistantEvent.Local(reply))
+            return@flow
+        }
+
+        // 1b) instant in-character small talk (greetings, thanks, time/date): no network, no wait
+        smallTalk.respond(text)?.let { reply ->
             saveAssistant(conversationId, reply, MessageEntity.SOURCE_LOCAL)
             emit(AssistantEvent.Local(reply))
             return@flow

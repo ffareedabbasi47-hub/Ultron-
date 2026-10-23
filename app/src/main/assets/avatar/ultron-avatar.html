@@ -28,6 +28,7 @@
   .panel[hidden]{display:none}
   .note{font-size:12px;color:var(--lo)} .err{color:var(--gold)}
   body.embed .hud,body.embed .panel,body.embed .fab{display:none!important}
+  html.embed,body.embed{background:transparent!important}
   @media (max-width:520px){.sub{display:none}}
 </style>
 </head>
@@ -184,9 +185,9 @@ H('CrownPlate',{t:[0,.8,.12],r:[.55,0,0],geo:superE(.4,.07,.4,.5,.5,32,16),m:MAT
 H('Crest',{t:[0,1.02,-.08],r:[.12,0,0],geo:box(.06,.12,.78),m:MATS.steel()});
 H('CrestGlow',{t:[0,1.085,-.08],r:[.12,0,0],geo:box(.016,.012,.6),m:MATS.glow()});
 H('Faceplate',{t:[0,.4,.34],geo:superE(.43,.5,.3,.5,.55,48,28),m:MATS.steel()});
-H('ForeheadPlate',{t:[0,.76,.46],r:[.3,0,0],geo:superE(.34,.14,.12,.5,.5,32,16),m:MATS.gun()});
-H('Brow',{t:[0,.67,.52],r:[.42,0,0],geo:box(.96,.12,.36),m:MATS.gun()});
-H('BrowEdge',{t:[0,.605,.66],r:[.42,0,0],geo:box(.9,.012,.04),m:MATS.trim()});
+const forehead=H('ForeheadPlate',{t:[0,.76,.46],r:[.3,0,0],geo:superE(.34,.14,.12,.5,.5,32,16),m:MATS.gun()});
+const brow=H('Brow',{t:[0,.67,.52],r:[.42,0,0],geo:box(.96,.12,.36),m:MATS.gun()});
+const browEdge=H('BrowEdge',{t:[0,.605,.66],r:[.42,0,0],geo:box(.9,.012,.04),m:MATS.trim()});
 H('VisorRecess',{t:[0,.5,.6],geo:box(.82,.2,.1),m:MATS.dark()});
 H('NoseBridge',{t:[0,.33,.62],r:[-.1,0,0],geo:box(.1,.3,.09),m:MATS.steel()});
 const eyes=[];
@@ -211,6 +212,7 @@ node('JawPlate',{parent:jaw,t:[0,-.08,.27],geo:superE(.34,.13,.3,.5,.55,36,20),m
 node('MouthRecess',{parent:jaw,t:[0,-.02,.545],geo:box(.3,.1,.06),m:MATS.dark()});
 for(let i=-4;i<=4;i++)node('Slat'+(i+4),{parent:jaw,t:[i*.034,-.02,.578],geo:box(.012,.085,.012),m:MATS.steel()});
 node('Chin',{parent:jaw,t:[0,-.2,.47],geo:box(.17,.06,.08),m:MATS.steel()});
+const mouthGlow=node('MouthGlow',{parent:jaw,t:[0,-.02,.592],geo:box(.27,.02,.012),m:MATS.glow()});
 // --- HUD rings (not exported)
 const rings=[];
 [[1.0,0.012,MATS.ring],[1.2,0.009,MATS.glow],[1.4,0.007,MATS.ring]].forEach(([R,r,mk],i)=>{
@@ -219,7 +221,7 @@ const rings=[];
 
 /* ============================ renderer ============================ */
 const canvas=document.getElementById('gl');
-const gl=canvas.getContext('webgl2',{antialias:false,alpha:false,powerPreference:'high-performance'});
+const gl=canvas.getContext('webgl2',{antialias:false,alpha:true,premultipliedAlpha:true,powerPreference:'high-performance'});
 const note=document.getElementById('note');
 if(!gl){note.textContent='WebGL2 is browser/device mein available nahi hai, isliye 3D avatar nahi dikha sakta.';note.className='note err';throw new Error('no webgl2');}
 
@@ -291,7 +293,7 @@ void main(){vec3 s=texture(uT,vUv).rgb*.227;
   s+=(texture(uT,vUv+uD*3.23).rgb+texture(uT,vUv-uD*3.23).rgb)*.070;o=vec4(s,1.);}`;
 const COMP=`#version 300 es
 precision highp float;in vec2 vUv;out vec4 o;
-uniform sampler2D uS,uB;uniform float uBloom,uT;uniform vec3 uAccent;uniform float uAsp;
+uniform sampler2D uS,uB;uniform float uBloom,uT,uEmbed;uniform vec3 uAccent;uniform float uAsp;
 float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 void main(){
   vec2 p=vUv-vec2(.5,.52);p.x*=uAsp;float r=length(p);
@@ -299,7 +301,13 @@ void main(){
   bg+=uAccent*.05*smoothstep(.55,.0,abs(r-.42));
   vec2 g=floor(vUv*vec2(uAsp*90.,90.));float st=h(g);
   bg+=vec3(.6,.7,1.)*step(.9965,st)*(.4+.6*sin(uT*1.5+st*40.))*.5;
-  vec4 s=texture(uS,vUv);vec3 col=mix(bg,s.rgb,s.a)+texture(uB,vUv).rgb*uBloom;
+  vec4 s=texture(uS,vUv);vec3 bl=texture(uB,vUv).rgb*uBloom;
+  if(uEmbed>.5){
+    // premultiplied, fully transparent outside the model: it floats on the app background (no frame, no box)
+    float a=clamp(s.a+max(bl.r,max(bl.g,bl.b))*.9,0.,1.);
+    o=vec4(min(s.rgb+bl,vec3(1.)),a);return;
+  }
+  vec3 col=mix(bg,s.rgb,s.a)+bl;
   col*=1.-.4*smoothstep(.45,1.,r);o=vec4(col,1.);}`;
 
 function prog(vs,fs){
@@ -357,9 +365,20 @@ function resize(){
 
 /* ============================= state ============================== */
 const STATE_COL={idle:[.55,.36,.96],listening:[.13,.83,.93],thinking:[.98,.75,.14],speaking:[1,.16,.27]};
+const EXPR={
+  calm:{brow:0,browY:0,tilt:0,narrow:-.08,asym:0,glow:0},
+  menacing:{brow:.14,browY:-.025,tilt:.2,narrow:-.34,asym:0,glow:.35},
+  smirk:{brow:.04,browY:0,tilt:.1,narrow:-.2,asym:.28,glow:.1},
+  curious:{brow:-.1,browY:.03,tilt:-.06,narrow:.18,asym:-.12,glow:.15},
+  alert:{brow:-.06,browY:.02,tilt:-.02,narrow:.28,asym:0,glow:.3},
+  surprised:{brow:-.2,browY:.05,tilt:-.1,narrow:.5,asym:0,glow:.4},
+  calculating:{brow:.08,browY:-.01,tilt:.12,narrow:-.3,asym:.22,glow:.05},
+  cold:{brow:.06,browY:-.01,tilt:.06,narrow:-.2,asym:0,glow:-.1}
+};
+const AUTO_EXPR={idle:'cold',listening:'alert',thinking:'calculating',speaking:'menacing'};
 const STATE_LABEL={idle:'Idle',listening:'Listening',thinking:'Thinking',speaking:'Speaking'};
 const S={state:'idle',accent:[...STATE_COL.idle],mouth:0,mouthExtern:null,env:0,pulse:0,micLevel:0,micOn:false,
-  look:[0,0],lookT:[0,0],yaw:.35,pitch:-.08,dist:5.6,reduced:false,blink:0,nextBlink:3,t:0,speaking:false};
+  look:[0,0],lookT:[0,0],yaw:.35,pitch:-.08,dist:5.6,reduced:false,blink:0,nextBlink:3,t:0,speaking:false,embed:false,syl:0,sylT:0,exprName:null,ex:{brow:0,browY:0,tilt:0,narrow:0,asym:0,glow:0}};
 
 function setState(s){
   if(!STATE_COL[s])return;S.state=s;
@@ -376,16 +395,21 @@ function animate(dt){
   // mouth: external value wins (API), else speaking envelope (approximate), else closed
   let mouthT=0;
   if(S.mouthExtern!==null)mouthT=S.mouthExtern;
-  else if(S.state==='speaking')mouthT=clamp(.18+.55*S.pulse+.25*Math.abs(Math.sin(t*13))*mo,0,1);
-  S.mouth=damp(S.mouth,mouthT,18,dt);
+  else if(S.state==='speaking'){
+    // syllable-like envelope (approximate lip-sync: TTS gives no phoneme data): new target every ~110-210 ms, short pauses
+    S.syl-=dt;if(S.syl<=0){S.syl=.11+Math.random()*.1;S.sylT=Math.random()<.16?0:.25+Math.random()*.75;}
+    mouthT=clamp(S.sylT*(.8+.2*mo)+.2*S.pulse,0,1);
+  }
+  S.mouth=damp(S.mouth,mouthT,S.state==='speaking'?26:16,dt);
   // look
-  const tx=S.state==='thinking'?Math.sin(t*.9)*.6*mo:S.look[0], ty=S.state==='thinking'?.25:S.look[1];
+  const gl_=S.embed?.25:1;const tx=S.state==='thinking'?Math.sin(t*.9)*.6*mo*gl_:(S.embed?0:S.look[0]), ty=S.state==='thinking'?.25*gl_:(S.embed?0:S.look[1]);
   S.lookT[0]=damp(S.lookT[0],tx,4,dt);S.lookT[1]=damp(S.lookT[1],ty,4,dt);
   const nod=S.state==='speaking'?S.mouth*.05*mo:0;
   head.r=[ -S.lookT[1]*.22+nod+(S.state==='listening'?-.05:0), S.lookT[0]*.42, S.state==='thinking'?.07*Math.sin(t*.9)*mo:0 ];
   head.t=[0,-.48+Math.sin(t*1.5)*.006*mo,-.02];
   bust.s=[1,1+Math.sin(t*1.5)*.006*mo,1];
   jaw.r=[S.mouth*.34,0,0];
+  mouthGlow.s=[1,.25+S.mouth*6,1];mouthGlow.mat.ei=S.mouth*3.2;
   // blink + visor
   S.nextBlink-=dt;if(S.nextBlink<=0&&!S.reduced){S.blink=.16;S.nextBlink=3+Math.random()*3;}
   S.blink=Math.max(0,S.blink-dt);const bl=S.blink>0?Math.sin(S.blink/.16*Math.PI):0;
@@ -394,10 +418,19 @@ function animate(dt){
   visor.mat.ei=2.6+(S.state==='idle'?.5*Math.sin(t*1.3)*mo:0)+speakGlow*2+(S.state==='thinking'?1.4:0);
   const scan=S.state==='thinking'?Math.sin(t*3.2)*.5:S.lookT[0]*.4;
   const narrow=S.state==='thinking'?.65+.35*Math.sin(t*9)*mo:(S.state==='listening'?1.25+lvl*.4:1);
-  for(const e of eyes){e.s=[(.96+.04*Math.sin(t*1.7)*mo)*(S.state==='listening'?1+lvl*.12:1),Math.max(.1,narrow*(1-bl*.92)),1];e.t=[e.bx+scan*.05,.5,.655];}
+  // expression: explicit (setExpression) or derived from state
+  const ex=EXPR[S.exprName||AUTO_EXPR[S.state]]||EXPR.calm;
+  for(const k in ex)S.ex[k]=damp(S.ex[k],ex[k],7,dt);
+  const X=S.ex;
+  brow.r=[.42+X.brow,0,0];brow.t=[0,.67+X.browY,.52];browEdge.r=[.42+X.brow,0,0];browEdge.t=[0,.605+X.browY,.66];forehead.r=[.3+X.brow*.6,0,0];
+  visor.mat.ei*=1+X.glow;
+  eyes.forEach((e,i)=>{const sx=i?1:-1;
+    const side=sx<0?1+X.asym:1-X.asym;
+    e.s=[(.96+.04*Math.sin(t*1.7)*mo)*(S.state==='listening'?1+lvl*.12:1),Math.max(.08,narrow*(1+X.narrow)*side*(1-bl*.92)),1];
+    e.t=[e.bx+scan*.05,.5,.655];e.r=[0,0,sx*(.24+X.tilt)];});
   // state-coloured parts
   const a=S.accent;
-  for(const n of[core,...sensors,...rings]){n.mat.em=[a[0],a[1],a[2]];n.mat.base=[a[0],a[1],a[2]];}
+  for(const n of[core,...sensors,...rings,mouthGlow]){n.mat.em=[a[0],a[1],a[2]];n.mat.base=[a[0],a[1],a[2]];}
   core.mat.ei=1.4+.7*Math.sin(t*2.2)*mo+(S.state==='listening'?lvl*3:0)+(S.state==='speaking'?S.mouth*2:0);
   for(const s of sensors)s.mat.ei=1.5+(S.state==='listening'?lvl*3.5:0)+(S.state==='thinking'?Math.sin(t*10)*.8:0);
   rings.forEach((r,i)=>{r.r=[Math.PI/2,0,(t*(.12+i*.07)*(i%2?-1:1))*mo];r.mat.ei=.9+(S.state==='listening'?lvl*3:0)+(S.state==='thinking'?.6+.4*Math.sin(t*5+i):0);});
@@ -420,11 +453,11 @@ function frame(now){
   render(dt);
 }
 function render(dt){
-  resize();animate(dt);if(model){const mo=S.reduced?0:1;model.root.r=[0,Math.sin(S.t*.45)*.28*mo,0];model.root.t=[model.bt[0],model.bt[1]+Math.sin(S.t*1.4)*.015*mo,model.bt[2]];}updateWorld(model?model.root:root,null);
+  resize();animate(dt);if(model){const mo=S.reduced?0:1;model.root.r=[0,Math.sin(S.t*.45)*(S.embed?.05:.28)*mo,0];model.root.t=[model.bt[0],model.bt[1]+Math.sin(S.t*1.4)*.015*mo,model.bt[2]];}updateWorld(model?model.root:root,null);
   const asp=RT.w/RT.h,portrait=asp<.85;
-  const dist=S.dist*(portrait?1.5:1.1)/Math.min(1,asp*1.15+.25);
+  const dist=S.dist*(S.embed?(portrait?.95:.68):(portrait?1.5:1.1))/Math.min(1,asp*1.15+.25);
   const eye=[Math.sin(S.yaw)*Math.cos(S.pitch)*dist,.2+Math.sin(S.pitch)*dist,Math.cos(S.yaw)*Math.cos(S.pitch)*dist];
-  camOff=damp(camOff,panelOpen?0:.35,4,dt);const target=model?[0,-.6,0]:[0,(portrait?-1.35:-1.15)+camOff,0];
+  camOff=damp(camOff,(S.embed||panelOpen)?0:.35,4,dt);const target=model?[0,-.6,0]:[0,(S.embed?-.4:(portrait?-1.35:-1.15))+camOff,0];
   const view=M.lookAt(eye,target,[0,1,0]),proj=M.persp(32*Math.PI/180,asp,.1,50),vp=M.mul(proj,view);
   const lp=model?[.8,1.2,2.6]:M.point(head.world,[0,.5,.9]);
 
@@ -435,7 +468,7 @@ function render(dt){
   gl.uniformMatrix4fv(u.uVP,false,vp);gl.uniform3fv(u.uCam,eye);gl.uniform3fv(u.uAccent,S.accent);
   gl.uniform3fv(u.uLp,lp);gl.uniform3f(u.uLc,1,.3,.35);gl.uniform1f(u.uLi,.9+visor.mat.ei*.12);
   if(model){gl.disable(gl.CULL_FACE);}
-  for(const n of (model?model.nodes:nodes)){if(!n.gl)continue;
+  for(const n of (model?model.nodes:nodes)){if(!n.gl)continue;if(S.embed&&n.hud)continue;
     if(model){if(n.mat.ds)gl.disable(gl.CULL_FACE);else gl.enable(gl.CULL_FACE);}
     gl.uniformMatrix4fv(u.uM,false,n.world);gl.uniformMatrix3fv(u.uNM,false,M.normalMat(n.world));
     const m=n.mat;gl.uniform3fv(u.uBase,m.base);gl.uniform3fv(u.uEm,m.em);gl.uniform1f(u.uEi,m.ei);gl.uniform1f(u.uMetal,m.metal);gl.uniform1f(u.uRough,m.rough);gl.uniform1f(u.uDet,m.det||0);bindMatTex(m,u);
@@ -458,7 +491,7 @@ function render(dt){
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,RT.w,RT.h);gl.useProgram(PC.p);
   gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,RT.sceneTex);gl.uniform1i(PC.u.uS,0);
   gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,bloomTex||RT.sceneTex);gl.uniform1i(PC.u.uB,1);
-  gl.uniform1f(PC.u.uBloom,bloomTex?1.15:0);gl.uniform1f(PC.u.uT,S.t);gl.uniform3fv(PC.u.uAccent,S.accent);gl.uniform1f(PC.u.uAsp,RT.w/RT.h);
+  gl.uniform1f(PC.u.uBloom,bloomTex?1.15:0);gl.uniform1f(PC.u.uEmbed,S.embed?1:0);gl.uniform1f(PC.u.uT,S.t);gl.uniform3fv(PC.u.uAccent,S.accent);gl.uniform1f(PC.u.uAsp,RT.w/RT.h);
   gl.drawArrays(gl.TRIANGLES,0,3);gl.activeTexture(gl.TEXTURE0);gl.bindVertexArray(null);
 }
 
@@ -713,7 +746,7 @@ async function loadModelFrom(src){
 function useBuiltin(){disposeModel();note.textContent='Built-in ULTRON avatar.';note.className='note';emit('modelLoaded','builtin');}
 (function boot(){
   const q=new URLSearchParams(location.search);
-  if(q.get('embed')==='1')document.body.classList.add('embed');
+  if(q.get('embed')==='1'){document.body.classList.add('embed');document.documentElement.classList.add('embed');S.embed=true;S.yaw=0;S.pitch=-.04;}
   if(q.get('low')==='1'){quality='low';document.getElementById('quality').value='low';}
   if(q.get('reduced')==='1'){S.reduced=true;document.getElementById('reduced').checked=true;}
   const m=q.get('model');if(m)loadModelFrom(m);
@@ -723,6 +756,9 @@ function useBuiltin(){disposeModel();note.textContent='Built-in ULTRON avatar.';
 /* public API: for a WebView bridge or tests */
 window.UltronAvatar={
   setState,
+  setExpression(n){S.exprName=(n&&EXPR[n])?n:null;},
+  expressions:()=>Object.keys(EXPR),
+  beat(v){S.pulse=clamp(+v||0,0,1);},
   setMouth(v){S.mouthExtern=v===null?null:clamp(+v||0,0,1);},
   lookAt(x,y){S.look=[clamp(x,-1,1),clamp(y,-1,1)];},
   setReduced(b){S.reduced=!!b;document.getElementById('reduced').checked=!!b;},

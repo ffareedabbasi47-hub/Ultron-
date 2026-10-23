@@ -39,7 +39,7 @@ class MainActivity : ComponentActivity() {
 
             val prefs = remember(s.reducedMotion, s.lowPerformance) { UiPrefs(s.reducedMotion, s.lowPerformance) }
             CompositionLocalProvider(LocalContainer provides c) {
-                UltronTheme(s.theme, prefs) {
+                UltronTheme(s.theme, prefs, s.font, s.textScale) {
                     if (loaded != null) AppRoot(s)
                 }
             }

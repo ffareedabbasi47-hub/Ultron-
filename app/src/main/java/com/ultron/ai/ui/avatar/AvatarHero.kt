@@ -30,7 +30,10 @@ import com.ultron.ai.ui.components.Equalizer
 import com.ultron.ai.ui.components.coreStateLabel
 import com.ultron.ai.ui.theme.UltronColors
 
-/** Home-screen replacement for the 2D core when a 3D avatar is selected. Tap opens Live voice. */
+/**
+ * Home-screen replacement for the 2D core when a 3D avatar is selected. The avatar floats on the app
+ * background (transparent WebView, no frame/border). Tap toggles the mic on Home.
+ */
 @Composable
 fun AvatarHero(
     avatarId: String,
@@ -40,34 +43,22 @@ fun AvatarHero(
     reducedMotion: Boolean,
     onFailed: () -> Unit,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            Modifier.fillMaxWidth().height(380.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .border(1.dp, UltronColors.Violet.copy(alpha = 0.35f), RoundedCornerShape(28.dp))
-                .semantics { contentDescription = "ULTRON 3D avatar. Live voice kholne ke liye tap karo" },
-        ) {
-            AvatarView(
-                avatarId = avatarId, state = state, lowPerformance = lowPerformance, reducedMotion = reducedMotion,
-                modifier = Modifier.fillMaxSize(),
-                onStatus = { if (it is AvatarStatus.Error) onFailed() },
-            )
-            // The WebView would swallow touches; this transparent layer makes the whole card a button.
-            Box(Modifier.fillMaxSize().clickable(onClick = onClick))
+    Box(modifier.semantics { contentDescription = "ULTRON 3D avatar. Bolne ke liye tap karo" }) {
+        AvatarView(
+            avatarId = avatarId, state = state, lowPerformance = lowPerformance, reducedMotion = reducedMotion,
+            modifier = Modifier.fillMaxSize(),
+            onStatus = { if (it is AvatarStatus.Error) onFailed() },
+        )
+        // The WebView would swallow touches; this transparent layer makes the whole area a button.
+        Box(Modifier.fillMaxSize().clickable(onClick = onClick))
+        Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Equalizer(state, level)
             Text(
                 if (state == AssistantState.IDLE) "BOLO, KAISE HELP KARUN?" else coreStateLabel(state).uppercase(),
-                style = MaterialTheme.typography.labelSmall, color = UltronColors.TextLo,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp)
-                    .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.labelSmall, color = UltronColors.TextLo, textAlign = TextAlign.Center,
             )
         }
-        Row(Modifier.fillMaxWidth(0.6f).padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-            Text(
-                "ULTRON", style = MaterialTheme.typography.headlineMedium.copy(fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp),
-                textAlign = TextAlign.Center, maxLines = 1,
-            )
-        }
-        Equalizer(state, level)
     }
 }

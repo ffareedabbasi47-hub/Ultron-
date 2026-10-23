@@ -16,14 +16,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
-data class VoiceInfo(
-    val name: String,
-    val localeTag: String,
-    val quality: Int,
-    val needsNetwork: Boolean,
-    val installed: Boolean,
-)
-
 data class EngineInfo(val packageName: String, val label: String)
 
 data class TtsState(
@@ -152,6 +144,12 @@ class TtsController(
                 warning = "Saved voice \"$saved\" is device par ab available nahi hai. Abhi engine ki default voice use ho rahi hai. " +
                     "Voice Studio mein dusri voice chuno ya voice pack dobara install karo."
             }
+        }
+        if (active == null && saved == null) {
+            // No saved choice yet: use the best installed/online voice instead of the engine's random default.
+            val best = VoiceRanker.best(_state.value.voices, newSettings.language.speechTag)
+            val voice = best?.let { b -> try { engine.voices?.firstOrNull { it.name == b.name } } catch (_: Exception) { null } }
+            if (voice != null) { engine.setVoice(voice); active = voice.name }
         }
         if (active == null) {
             val tag = newSettings.language.speechTag
