@@ -7,8 +7,11 @@ import android.util.Base64
 import com.ultron.ai.core.diagnostics.DiagnosticsLog
 import com.ultron.ai.data.ai.GeminiWire
 import com.ultron.ai.data.settings.SettingsRepository
+import com.ultron.ai.domain.live.LipSync
+import com.ultron.ai.domain.live.MouthFrames
 import com.ultron.ai.domain.live.Wav
 import java.io.IOException
+import kotlin.math.abs
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -29,6 +32,10 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
 private class Clip(val text: String, val pcm: ShortArray?, val rate: Int)
+private class LipClip(val startSample: Long, val rate: Int, val frames: MouthFrames, val endSample: Long)
+
+/** (jaw opening 0..1, shape -1 round .. +1 wide) of the audio being heard right now. */
+data class MouthPose(val open: Float = 0f, val shape: Float = 0f, val live: Boolean = false)
 
 /**
  * Online natural voices (Gemini TTS) with the user's own key. Sentences are synthesised in parallel (max 2)
@@ -57,6 +64,11 @@ class CloudVoice(
 
     private val _speaking = MutableStateFlow(false)
     val speaking: StateFlow<Boolean> = _speaking
+    private val _mouth = MutableStateFlow(MouthPose())
+    /** Real audio-driven mouth pose; live=false means "no cloud audio is playing, use the approximate fallback". */
+    val mouth: StateFlow<MouthPose> = _mouth
+    private val lipClips = java.util.concurrent.CopyOnWriteArrayList<LipClip>()
+    private var lipJob: Job? = null
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError
 
@@ -126,6 +138,8 @@ class CloudVoice(
         player?.cancel()
         player = null
         releaseTrack()
+        lipJob?.cancel(); lipJob = null; lipClips.clear()
+        _mouth.value = MouthPose()
         _speaking.value = false
     }
 
@@ -144,7 +158,12 @@ class CloudVoice(
                 val pcm = clip.pcm
                 if (pcm == null) { pendingFallback?.invoke(clip.text); continue }
                 val t = track ?: newTrack(clip.rate).also { track = it }
-                if (first) { first = false; firstAudioCb?.invoke(); _speaking.value = true; t.play() }
+                lipClips += LipClip(written, clip.rate, LipSync.analyze(pcm, clip.rate), written + pcm.size)
+                if (first) {
+                    first = false; firstAudioCb?.invoke(); _speaking.value = true; t.play()
+                    lipJob?.cancel()
+                    lipJob = io.launch { followPlayhead(gen, t) }
+                }
                 var off = 0
                 while (off < pcm.size) {
                     if (synchronized(lock) { gen != generation }) return
@@ -168,8 +187,23 @@ class CloudVoice(
             diagnostics.log("cvoice", "playback ${e.javaClass.simpleName}")
         } finally {
             synchronized(lock) {
-                if (gen == generation) { sessionActive = false; releaseTrack(); _speaking.value = false }
+                if (gen == generation) { sessionActive = false; releaseTrack(); lipJob?.cancel(); lipJob = null; lipClips.clear(); _mouth.value = MouthPose(); _speaking.value = false }
             }
+        }
+    }
+
+    /** Reads the speaker's real playback position ~60x/s and publishes the matching mouth pose. */
+    private suspend fun followPlayhead(gen: Int, t: AudioTrack) {
+        var lastOpen = -1f
+        while (synchronized(lock) { gen == generation }) {
+            val head = try { t.playbackHeadPosition.toLong() and 0xFFFFFFFFL } catch (_: Exception) { break }
+            val clip = lipClips.lastOrNull { head >= it.startSample && head < it.endSample }
+            val pose = if (clip == null) MouthPose(0f, 0f, true) else {
+                val (o, sh) = LipSync.at(clip.frames, clip.rate, head - clip.startSample)
+                MouthPose(o, sh, true)
+            }
+            if (abs(pose.open - lastOpen) > 0.01f || pose.open == 0f) { _mouth.value = pose; lastOpen = pose.open }
+            kotlinx.coroutines.delay(16)
         }
     }
 

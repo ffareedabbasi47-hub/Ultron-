@@ -26,8 +26,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ultron.ai.AssistantState
-import com.ultron.ai.ui.components.Equalizer
-import com.ultron.ai.ui.components.coreStateLabel
 import com.ultron.ai.ui.theme.UltronColors
 
 /**
@@ -38,7 +36,6 @@ import com.ultron.ai.ui.theme.UltronColors
 fun AvatarHero(
     avatarId: String,
     state: AssistantState,
-    level: Float,
     lowPerformance: Boolean,
     reducedMotion: Boolean,
     onFailed: () -> Unit,
@@ -53,12 +50,5 @@ fun AvatarHero(
         )
         // The WebView would swallow touches; this transparent layer makes the whole area a button.
         Box(Modifier.fillMaxSize().clickable(onClick = onClick))
-        Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Equalizer(state, level)
-            Text(
-                if (state == AssistantState.IDLE) "BOLO, KAISE HELP KARUN?" else coreStateLabel(state).uppercase(),
-                style = MaterialTheme.typography.labelSmall, color = UltronColors.TextLo, textAlign = TextAlign.Center,
-            )
-        }
     }
 }

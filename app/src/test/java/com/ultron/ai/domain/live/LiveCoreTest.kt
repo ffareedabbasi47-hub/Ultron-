@@ -156,3 +156,34 @@ class LiveCoreTest {
         assertNull(WakeWord.match("mujhe batao ki ultron kya hota hai aur kaun banata hai"))
     }
 }
+
+class LipSyncTest {
+    private fun tone(amp: Double, hz: Double, ms: Int, rate: Int = 24000) = ShortArray(rate * ms / 1000) { i -> (amp * 32767 * kotlin.math.sin(2 * kotlin.math.PI * hz * i / rate)).toInt().toShort() }
+
+    @Test fun silenceKeepsMouthClosed() {
+        val f = LipSync.analyze(ShortArray(24000), 24000)
+        assertTrue(f.open.all { it == 0f })
+    }
+    @Test fun loudSpeechOpensMouthInTimeWithAudio() {
+        val pcm = ShortArray(24000 / 2) + tone(0.3, 180.0, 500) + ShortArray(24000 / 2) // 0.5s silence, 0.5s voice, 0.5s silence
+        val f = LipSync.analyze(pcm, 24000)
+        val (o0, _) = LipSync.at(f, 24000, 6000)   // 0.25 s: silent
+        val (o1, _) = LipSync.at(f, 24000, 18000)  // 0.75 s: voice
+        val (o2, _) = LipSync.at(f, 24000, 30000)  // 1.25 s: silent again
+        assertTrue(o0 < 0.05f); assertTrue(o1 > 0.5f); assertTrue(o2 < 0.15f)
+    }
+    @Test fun brightSoundsMakeMouthWiderThanLowVowels() {
+        val low = LipSync.analyze(tone(0.3, 150.0, 400), 24000)
+        val high = LipSync.analyze(tone(0.3, 5500.0, 400), 24000)
+        assertTrue(low.shape[10] < high.shape[10])
+    }
+    @Test fun quietSyllablesStillMove() {
+        val f = LipSync.analyze(tone(0.02, 200.0, 300), 24000) // about -37 dB
+        assertTrue(f.open[5] > 0.2f)
+    }
+    @Test fun positionPastEndIsClosed() {
+        val f = LipSync.analyze(tone(0.3, 200.0, 100), 24000)
+        assertEquals(0f, LipSync.at(f, 24000, 999999).first)
+        assertEquals(0f, LipSync.at(f, 24000, -5).first)
+    }
+}

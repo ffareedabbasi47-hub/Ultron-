@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -188,6 +189,15 @@ fun HomeScreen(
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
+    // The avatar fills the background BEHIND the buttons/cards, like the reference. No waveform or label on it:
+    // the avatar itself opens its mouth in time with the audio.
+    if (use3d) AvatarHero(
+        avatarId = settings.avatarId, state = state,
+        lowPerformance = settings.lowPerformance, reducedMotion = settings.reducedMotion,
+        onFailed = { avatarFailed = true }, onClick = ::onMicTap,
+        modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().fillMaxHeight(0.66f).statusBarsPadding().padding(top = 56.dp),
+    )
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp)) {
         TopBar(onMenu = onMenu, onBell = { onNavigate(Routes.NOTIFS) }, onAvatar = { onNavigate(Routes.GENERAL) })
 
@@ -215,18 +225,11 @@ fun HomeScreen(
             }
         }
 
-        // Core / avatar fills whatever height is left, so the whole screen fits in one frame.
+        // Free space above the cards: the avatar (behind) or the 2D core fallback.
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            if (!use3d) androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 val side = minOf(maxWidth, maxHeight)
-                if (use3d) {
-                    AvatarHero(
-                        avatarId = settings.avatarId, state = state, level = level,
-                        lowPerformance = settings.lowPerformance, reducedMotion = settings.reducedMotion,
-                        onFailed = { avatarFailed = true }, onClick = ::onMicTap,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else Box(
+                Box(
                     Modifier.size(side).clickable(onClick = ::onMicTap)
                         .semantics { contentDescription = "ULTRON core. Bolne ke liye tap karo" },
                     contentAlignment = Alignment.Center,
@@ -328,6 +331,7 @@ fun HomeScreen(
             attachBusy = ocrBusy,
         )
         Spacer(Modifier.height(8.dp))
+    }
     }
 }
 

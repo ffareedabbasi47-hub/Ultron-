@@ -12,6 +12,7 @@ import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -100,6 +101,12 @@ fun AvatarView(
         }
     }
     LaunchedEffect(pageReady, state) { if (pageReady) js("UltronAvatar.setState('${moodFor(state)}')") }
+    // Real audio-driven lip-sync from the online voice's playback position; falls back to the page's approximate motion.
+    val mouth by container.cloudVoice.mouth.collectAsState()
+    LaunchedEffect(pageReady, mouth) {
+        if (!pageReady) return@LaunchedEffect
+        if (mouth.live) js("UltronAvatar.setMouthFrame(${mouth.open}, ${mouth.shape})") else js("UltronAvatar.setMouth(null)")
+    }
     LaunchedEffect(pageReady, expression) { if (pageReady) js("UltronAvatar.setExpression(${if (expression == null) "null" else JSONObject.quote(expression)})") }
     LaunchedEffect(pageReady, lowPerformance) { if (pageReady) js("UltronAvatar.setQuality('${if (lowPerformance) "low" else "high"}')") }
     LaunchedEffect(pageReady, reducedMotion) { if (pageReady) js("UltronAvatar.setReduced($reducedMotion)") }

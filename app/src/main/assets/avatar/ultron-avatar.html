@@ -400,7 +400,8 @@ function animate(dt){
     S.syl-=dt;if(S.syl<=0){S.syl=.11+Math.random()*.1;S.sylT=Math.random()<.16?0:.25+Math.random()*.75;}
     mouthT=clamp(S.sylT*(.8+.2*mo)+.2*S.pulse,0,1);
   }
-  S.mouth=damp(S.mouth,mouthT,S.state==='speaking'?26:16,dt);
+  S.mouth=damp(S.mouth,mouthT,S.mouthExtern!==null?34:(S.state==='speaking'?26:16),dt);
+  S.shape=damp(S.shape||0,S.mouthExtern!==null?(S.shapeT||0):0,24,dt);
   // look
   const gl_=S.embed?.25:1;const tx=S.state==='thinking'?Math.sin(t*.9)*.6*mo*gl_:(S.embed?0:S.look[0]), ty=S.state==='thinking'?.25*gl_:(S.embed?0:S.look[1]);
   S.lookT[0]=damp(S.lookT[0],tx,4,dt);S.lookT[1]=damp(S.lookT[1],ty,4,dt);
@@ -409,7 +410,7 @@ function animate(dt){
   head.t=[0,-.48+Math.sin(t*1.5)*.006*mo,-.02];
   bust.s=[1,1+Math.sin(t*1.5)*.006*mo,1];
   jaw.r=[S.mouth*.34,0,0];
-  mouthGlow.s=[1,.25+S.mouth*6,1];mouthGlow.mat.ei=S.mouth*3.2;
+  mouthGlow.s=[1+S.shape*.45-(1-Math.min(1,S.mouth*2))*0,.25+S.mouth*6,1];mouthGlow.mat.ei=S.mouth*3.2;
   // blink + visor
   S.nextBlink-=dt;if(S.nextBlink<=0&&!S.reduced){S.blink=.16;S.nextBlink=3+Math.random()*3;}
   S.blink=Math.max(0,S.blink-dt);const bl=S.blink>0?Math.sin(S.blink/.16*Math.PI):0;
@@ -760,6 +761,8 @@ window.UltronAvatar={
   expressions:()=>Object.keys(EXPR),
   beat(v){S.pulse=clamp(+v||0,0,1);},
   setMouth(v){S.mouthExtern=v===null?null:clamp(+v||0,0,1);},
+  setMouthShape(v){S.shapeT=clamp(+v||0,-1,1);},
+  setMouthFrame(o,sh){S.mouthExtern=clamp(+o||0,0,1);S.shapeT=clamp(+sh||0,-1,1);},
   lookAt(x,y){S.look=[clamp(x,-1,1),clamp(y,-1,1)];},
   setReduced(b){S.reduced=!!b;document.getElementById('reduced').checked=!!b;},
   setQuality(q){quality=q==='low'?'low':'high';document.getElementById('quality').value=quality;},

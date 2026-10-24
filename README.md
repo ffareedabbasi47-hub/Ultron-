@@ -138,3 +138,6 @@ Markets now has Watchlist/Portfolio/Analysis (NSE/BSE label, validated symbols, 
 - **Edge light:** rotating light around the screen while live (in-app, or over other apps with the overlay permission).
 
 **Verified here:** JVM unit tests for VAD, sleep clock, state transitions, echo gate, wake phrase, command parsing, agent JSON, Gemini wire formats. **Not verified:** everything that needs Android/a device (AudioRecord, AEC behaviour on Oppo, foreground service, accessibility, assistant role, overlay, Gemini TTS model availability).
+
+### Avatar on Home and lip-sync
+The avatar is drawn behind the Home cards (no waveform/label on it). With the online voice, the mouth follows the real playback position of the audio (`domain/live/LipSync.kt`: loudness = jaw opening, brightness = round/wide). With the device voice no audio is available, so the page's approximate motion is used. Your own GLB models can be imported in Avatar Studio; game-ripped models (e.g. Marvel Ultron `.blend` files) are not bundled in this repo.
