@@ -34,6 +34,7 @@ class AppContainer(app: Application) {
     val latency = LatencyStats()
     val secure = SecureStore(app)
     val settings = SettingsRepository(app, secure)
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /** True if the encrypted DB had to be recreated because its Keystore key was lost. */
     @Volatile var databaseWasReset = false
@@ -49,22 +50,34 @@ class AppContainer(app: Application) {
     val geminiDirect = GeminiDirectProvider(settings, http, diagnostics)
     /** Uses the user's own Gemini key when saved (fastest, one hop), else the ULTRON backend proxy. */
     val provider: AIProvider = RoutingProvider(settings, proxyProvider, geminiDirect)
-    val tts = TtsController(app, diagnostics, latency)
+    val cloudVoice = com.ultron.ai.platform.voice.CloudVoice(settings, http, diagnostics, appScope)
+    val tts = TtsController(app, diagnostics, latency, cloudVoice)
     val stt = SttController(app, diagnostics)
     val reminders = ReminderScheduler(app, db.reminders())
-    val actions = DeviceActionRunner(app, db.memory(), reminders, tts)
+    val screenControl: com.ultron.ai.domain.ScreenControl = com.ultron.ai.platform.accessibility.AccessibilityScreenControl()
+    val broker = com.ultron.ai.platform.actions.ConfirmationBroker()
+    val actions = DeviceActionRunner(app, db.memory(), reminders, tts, screenControl, broker)
     val identity = IdentityResponder(BuildConfig.CREATOR_NAME)
     val engine = AssistantEngine(db.conversations(), provider, settings, identity, SmallTalk(BuildConfig.CREATOR_NAME), actions, latency, diagnostics)
+    val oneShot = com.ultron.ai.data.ai.GeminiOneShot(settings, http, diagnostics)
+    init {
+        actions.agent = com.ultron.ai.platform.actions.ScreenAgent(
+            screenControl, oneShot, broker,
+            openApp = { name -> actions.run(com.ultron.ai.domain.UltronAction.OpenApp(name)) },
+            speak = { t -> val k = tts.beginSpeech(0L); tts.enqueue(k, t); tts.endSpeech(k) },
+            diagnostics = diagnostics,
+        )
+    }
     val weather = WeatherRepository(settings, http, diagnostics)
     val ocr = OcrEngine(app)
     val avatars = AvatarRepository(app, http, diagnostics)
-
-    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /** Text handed from another screen (Home composer, Scan) to the Chat screen. */
     val pendingPrompt = MutableStateFlow<PendingPrompt?>(null)
     /** Set by the dock mic; Home consumes it and toggles listening there. */
     val micRequest = MutableStateFlow(false)
+    /** Set by the assistant gesture / ASSIST intent: start live (never toggles it off). */
+    val liveStartRequest = MutableStateFlow(false)
     /** Incremented when Home is tapped while already on Home: scroll to top. */
     val homeReselect = MutableStateFlow(0)
 
@@ -74,6 +87,11 @@ class AppContainer(app: Application) {
     init { appScope.launch { geminiDirect.prewarm() } }
 
     val turns = TurnController(engine, tts, stt, settings, diagnostics, appScope, assistantState)
+
+    val mic = com.ultron.ai.platform.live.MicCapture(app, diagnostics)
+    val transcriber = com.ultron.ai.platform.live.GeminiTranscriber(settings, http, diagnostics)
+    /** The one live-conversation owner (see LiveSessionEngine). */
+    val live = com.ultron.ai.platform.live.LiveSessionEngine(app, appScope, settings, mic, transcriber, turns, engine, tts, cloudVoice, diagnostics, broker)
 }
 
 data class PendingPrompt(val text: String, val autoSend: Boolean, val study: Boolean = false)

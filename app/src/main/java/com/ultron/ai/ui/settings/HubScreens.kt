@@ -87,7 +87,7 @@ fun SettingsHubScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
             HubRow("Backup", Icons.Filled.IosShare, "Backup", "Export, last backup, restore status", Routes.BACKUP),
             HubRow("Advanced", Icons.Filled.PrivacyTip, "Privacy aur permissions", "Mic, camera, cloud, delete everything", Routes.PRIVACY),
             HubRow("Advanced", Icons.Filled.BugReport, "Diagnostics", "Redacted logs, connectivity", Routes.DIAG),
-            HubRow("Battery saver", Icons.Filled.BatteryChargingFull, "Battery aur background", "Battery optimization, autostart guidance", Routes.ACCESS),
+            HubRow("Live", Icons.Filled.BatteryChargingFull, "Live aur Assistant", "Sleep timer, echo, screen control, default assistant, battery", Routes.ACCESS),
             HubRow("Battery saver", Icons.Filled.BatteryChargingFull, "Low-performance mode", "Animation aur 3D halka karo", Routes.GENERAL),
             HubRow("Appearance", Icons.Filled.Palette, "Appearance", "Theme, motion", Routes.GENERAL),
             HubRow("Appearance", Icons.Filled.Face, "Avatar Studio", "3D avatar, models, live wallpaper", Routes.AVATAR),
@@ -244,47 +244,77 @@ fun RulesScreen(settings: UltronSettings, onBack: () -> Unit) = HubPage("ULTRON 
     RulesEditor(settings)
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun AccessibilityScreen(onBack: () -> Unit) {
+fun AccessibilityScreen(settings: com.ultron.ai.data.settings.UltronSettings, onBack: () -> Unit) {
     val context = LocalContext.current
+    val c = LocalContainer.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun update(b: (com.ultron.ai.data.settings.UltronSettings) -> com.ultron.ai.data.settings.UltronSettings) { scope.launch { c.settings.update(b) } }
     fun open(i: Intent) = runCatching { context.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+    fun isAssistant(): Boolean = if (android.os.Build.VERSION.SDK_INT >= 29) runCatching { context.getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT) }.getOrDefault(false) else false
     var unrestricted by remember { mutableStateOf(pm.isIgnoringBatteryOptimizations(context.packageName)) }
+    var a11y by remember { mutableStateOf(c.screenControl.isEnabled()) }
+    var overlay by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    var assistant by remember { mutableStateOf(isAssistant()) }
     androidx.compose.runtime.DisposableEffect(Unit) {
-        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) unrestricted = pm.isIgnoringBatteryOptimizations(context.packageName) }
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                unrestricted = pm.isIgnoringBatteryOptimizations(context.packageName)
+                a11y = c.screenControl.isEnabled(); overlay = Settings.canDrawOverlays(context); assistant = isAssistant()
+            }
+        }
         val owner = context as? androidx.lifecycle.LifecycleOwner
         owner?.lifecycle?.addObserver(obs)
         onDispose { owner?.lifecycle?.removeObserver(obs) }
     }
-    HubPage("Accessibility aur Battery", onBack) {
+    @Composable fun perm(title: String, on: Boolean, onText: String, offText: String, body: String, button: String, onClick: () -> Unit) {
+        GlassCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row { Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); if (on) StatusPill(onText, UltronColors.Green) else StatusPill(offText, UltronColors.Gold) }
+                Text(body, color = UltronColors.TextLo)
+                OutlinedButton(onClick = onClick, Modifier.fillMaxWidth()) { Text(button) }
+            }
+        }
+    }
+    HubPage("Live aur Assistant", onBack) {
+        SectionLabel("Live conversation")
+        Text("Mic ek baar khulta hai aur session chalne tak khula rehta hai. Notification mein Stop hamesha milega.", color = UltronColors.TextLo)
+        Text("Chup rehne par Live Session Sleep", style = MaterialTheme.typography.titleMedium)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.ultron.ai.domain.live.SleepTimeout.entries.forEach { t ->
+                androidx.compose.material3.FilterChip(selected = settings.sleepTimeout == t, onClick = { update { it.copy(sleepTimeout = t) } }, label = { Text(t.label) })
+            }
+        }
         Text(
-            "Ye screen sirf samjhane aur Android settings tak pahunchane ke liye hai. ULTRON kuch bhi apne aap on nahi karta; har step tum khud karte ho.",
-            style = MaterialTheme.typography.bodyLarge,
+            if (settings.sleepTimeout == com.ultron.ai.domain.live.SleepTimeout.OFF) "Off: silence se session band nahi hoga (Stop dabane tak). Android/OS phir bhi service ko roke to wo mere control mein nahi."
+            else "${settings.sleepTimeout.label} tak aapki awaaz na aaye to session SLEEP mein jaata hai. ULTRON ka apna bolna aur background media is timer ko reset nahi karte.",
+            color = UltronColors.TextLo, style = MaterialTheme.typography.bodyMedium,
         )
-        SectionLabel("Accessibility")
-        GlassCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row { Text("Accessibility service", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); StatusPill("Is build mein nahi", UltronColors.Gold) }
-                Text("ULTRON dusre apps ke buttons nahi dabata. App kholna, settings kholna aur YouTube normal Android intents se hota hai. Agar ye service aayegi to sirf tumhari permission se, aur security/payment screens par kabhi nahi.", color = UltronColors.TextLo)
-                OutlinedButton(onClick = { open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }, Modifier.fillMaxWidth()) { Text("Android Accessibility settings") }
-            }
+        SliderRow("Baat khatam samajhne ka pause (sec)", settings.endPauseMs / 1000f, 0.4f..2.0f) { v -> update { it.copy(endPauseMs = (v * 1000).toInt()) } }
+        SwitchRow("Full-duplex (ULTRON bolte waqt bhi suno)", "Barge-in: beech mein bol sakte ho. Phone ke echo canceller par depend karta hai. Off = safe: ULTRON bolte waqt aapki awaaz ignore hoti hai (mic phir bhi khula rehta hai).", settings.fullDuplex) { v -> update { it.copy(fullDuplex = v) } }
+        SwitchRow("Media interference kam karo", "Video/gaane ki awaaz ko aapki awaaz samajhne ka chance kam karta hai. Perfect nahi: headset sabse bharosemand.", settings.reduceMediaInterference) { v -> update { it.copy(reduceMediaInterference = v) } }
+        SwitchRow("Sleep mein 'Hey Ultron' check (cloud)", "On karne par sleep mein chhote bol Gemini ko bheje jaate hain taaki wake phrase pehchana ja sake. Off = sleep mein mic band, Wake button se uthao. Ye asli wake-word engine nahi hai.", settings.wakeCloudCheck) { v -> update { it.copy(wakeCloudCheck = v) } }
+        SwitchRow("Edge light (app ke andar)", "Live ke dauran screen ke kinaare ghoomti light.", settings.edgeLight) { v -> update { it.copy(edgeLight = v) } }
+        SwitchRow("Edge light (dusre apps ke upar)", if (overlay) "Permission mili hui hai." else "Pehle neeche 'Display over other apps' allow karo.", settings.overlayLight, enabled = true) { v -> update { it.copy(overlayLight = v) } }
+
+        SectionLabel("Permissions")
+        perm("Screen control (Accessibility)", a11y, "On", "Off",
+            "ULTRON ko screen par click, scroll, type aur back/home karne deta hai. Sirf aapke command par; password fields nahi padhta; send/pay/delete jaise step se pehle poochta hai. Android Settings mein aap khud on karoge.",
+            "Accessibility settings kholo") { open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        perm("Dusre apps ke upar dikhna", overlay, "Allowed", "Off",
+            "Sirf edge light ke liye. Touch nahi rokta.", "Overlay permission kholo") { open(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + context.packageName))) }
+        perm("Default digital assistant", assistant, "ULTRON hai", "Nahi",
+            "Power/assist gesture se ULTRON khulta hai aur live shuru hota hai. Android aapse confirm karwata hai; main khud set nahi kar sakta.", "Assistant chuno") {
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                val rm = context.getSystemService(android.app.role.RoleManager::class.java)
+                if (rm.isRoleAvailable(android.app.role.RoleManager.ROLE_ASSISTANT)) open(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_ASSISTANT)) else open(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))
+            } else open(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))
         }
-        SectionLabel("Battery")
-        GlassCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row { Text("Battery optimization", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); if (unrestricted) StatusPill("Unrestricted", UltronColors.Green) else StatusPill("Optimized", UltronColors.Gold) }
-                Text("ULTRON abhi background mein nahi sunta, isliye iski zaroorat nahi. Reminders aur live wallpaper ke liye kabhi-kabhi Android optimize kar deta hai; chaho to yahan se badal sakte ho. Background chalna phone/OS par depend karta hai — guarantee nahi.", color = UltronColors.TextLo)
-                OutlinedButton(onClick = { open(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }, Modifier.fillMaxWidth()) { Text("Battery optimization settings") }
-            }
-        }
-        SectionLabel("Autostart")
-        GlassCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row { Text("Autostart", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); StatusPill("Status pata nahi", UltronColors.Gold) }
-                Text("Autostart ka koi standard Android API nahi hai (Xiaomi/Oppo/Vivo jaisi companies apni alag setting deti hain), isliye main iski sach-much status nahi bata sakta. App info mein jaakar dekh lo.", color = UltronColors.TextLo)
-                OutlinedButton(onClick = { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))) }, Modifier.fillMaxWidth()) { Text("ULTRON app info / permissions") }
-            }
-        }
+        perm("Battery", unrestricted, "Unrestricted", "Optimized",
+            "Background mein mic chalne ke liye 'Unrestricted' rakho. Oppo/ColorOS par App info → Battery usage → Allow background activity aur Autostart bhi on karo; iska koi standard API nahi, isliye main status nahi dekh sakta.", "Battery settings") { open(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+        OutlinedButton(onClick = { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))) }, Modifier.fillMaxWidth()) { Text("ULTRON app info / permissions") }
     }
 }
 

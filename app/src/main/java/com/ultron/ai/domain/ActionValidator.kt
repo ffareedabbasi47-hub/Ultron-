@@ -35,5 +35,15 @@ object ActionValidator {
             else Validation.OK
 
         UltronAction.StopSpeaking -> Validation.OK
+
+        is UltronAction.Click ->
+            if (action.label.isBlank() || action.label.length > 60) Validation.no("Click ka label 1-60 characters ka hona chahiye.") else Validation.OK
+        is UltronAction.TypeText ->
+            if (action.text.isEmpty() || action.text.length > 300) Validation.no("Type karne ka text 1-300 characters ka hona chahiye.") else Validation.OK
+        is UltronAction.Scroll -> Validation.OK
+        is UltronAction.Navigate -> Validation.OK
+        UltronAction.ReadScreen -> Validation.OK
+        is UltronAction.ScreenTask ->
+            if (action.goal.isBlank() || action.goal.length > 200) Validation.no("Task 1-200 characters ka hona chahiye.") else Validation.OK
     }
 }

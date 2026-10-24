@@ -9,10 +9,17 @@
     <!-- Requested at runtime ONLY when the user creates a reminder (Android 13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Live conversation: foreground service with a visible notification (microphone type). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Optional: rotating edge light over other apps while live (user grants it in Settings). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!--
       No CAMERA permission: Scan uses the system camera app via TakePicture, so the app never
-      holds camera access itself. No foreground service, accessibility service, overlay,
-      QUERY_ALL_PACKAGES or storage permission is declared: none is used in this build.
+      holds camera access itself. The foreground service is only used for the Live conversation. QUERY_ALL_PACKAGES
+      and storage permissions are not declared.
     -->
 
     <!-- Optional: only used if the user sets the ULTRON live wallpaper. -->
@@ -56,7 +63,64 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Assistant gesture / "default assistant" entry points -->
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.ultron.ai.LIVE_START" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
+
+        <!-- Optional screen control: active only if the user enables it in Android Accessibility settings. -->
+        <service
+            android:name=".platform.accessibility.UltronAccessibilityService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- Optional: lets the user pick ULTRON as the digital assistant. -->
+        <service
+            android:name=".platform.assistant.UltronInteractionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/voice_interaction_service" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".platform.assistant.UltronSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+        <service
+            android:name=".platform.assistant.UltronRecognitionStub"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".platform.live.LiveSessionService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
 
         <!-- Live wallpaper (built-in 3D avatar). Binding is system-only; no extra permission is requested. -->
         <service

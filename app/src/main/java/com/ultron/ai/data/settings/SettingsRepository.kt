@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.ultron.ai.BuildConfig
 import com.ultron.ai.core.security.SecureStore
+import com.ultron.ai.domain.live.SleepTimeout
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -64,6 +65,30 @@ data class UltronSettings(
     val streaming: Boolean = true,
     val timeoutSec: Int = 30,
     val maxRetries: Int = 2,
+
+    // ---- Live conversation
+    /** "Chup rehne par Live Session Sleep". */
+    val sleepTimeout: SleepTimeout = SleepTimeout.M10,
+    /** Pause (ms) after which an utterance is considered finished. */
+    val endPauseMs: Int = 700,
+    /**
+     * true: keep listening while ULTRON speaks and allow barge-in (relies on the device's acoustic echo canceller).
+     * false (default, safest): speech that starts while ULTRON talks is ignored; the recorder stays open.
+     */
+    val fullDuplex: Boolean = false,
+    /** Slightly stricter speech detection so video/music in the background is less likely to count as you. */
+    val reduceMediaInterference: Boolean = true,
+    /** While asleep, check short utterances for "Hey Ultron" by sending them to Gemini (cloud). Off by default. */
+    val wakeCloudCheck: Boolean = false,
+    /** Rotating light around the app edge while live. */
+    val edgeLight: Boolean = true,
+    /** The same light over other apps (needs "display over other apps" permission). */
+    val overlayLight: Boolean = false,
+
+    // ---- Voice (Gemini online voices)
+    val cloudVoice: Boolean = true,
+    val cloudVoiceName: String = "Algenib",
+    val cloudTtsModel: String = "gemini-2.5-flash-preview-tts",
 
     val backendUrl: String = BuildConfig.BACKEND_URL,
     val weatherCity: String = "",
@@ -123,6 +148,16 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
             streaming = this[K_STREAM] ?: d.streaming,
             timeoutSec = this[K_TIMEOUT] ?: d.timeoutSec,
             maxRetries = this[K_RETRIES] ?: d.maxRetries,
+            sleepTimeout = enumOr(this[K_SLEEP], d.sleepTimeout),
+            endPauseMs = (this[K_ENDPAUSE] ?: d.endPauseMs).coerceIn(400, 2000),
+            fullDuplex = this[K_FULLDUPLEX] ?: d.fullDuplex,
+            reduceMediaInterference = this[K_MEDIA] ?: d.reduceMediaInterference,
+            wakeCloudCheck = this[K_WAKECLOUD] ?: d.wakeCloudCheck,
+            edgeLight = this[K_EDGE] ?: d.edgeLight,
+            overlayLight = this[K_OVERLAY] ?: d.overlayLight,
+            cloudVoice = this[K_CLOUDVOICE] ?: d.cloudVoice,
+            cloudVoiceName = this[K_CVNAME] ?: d.cloudVoiceName,
+            cloudTtsModel = this[K_CTTSMODEL] ?: d.cloudTtsModel,
             backendUrl = this[K_BACKEND] ?: d.backendUrl,
             weatherCity = this[K_CITY] ?: d.weatherCity,
         )
@@ -152,6 +187,16 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
         this[K_STREAM] = s.streaming
         this[K_TIMEOUT] = s.timeoutSec
         this[K_RETRIES] = s.maxRetries
+        this[K_SLEEP] = s.sleepTimeout.name
+        this[K_ENDPAUSE] = s.endPauseMs
+        this[K_FULLDUPLEX] = s.fullDuplex
+        this[K_MEDIA] = s.reduceMediaInterference
+        this[K_WAKECLOUD] = s.wakeCloudCheck
+        this[K_EDGE] = s.edgeLight
+        this[K_OVERLAY] = s.overlayLight
+        this[K_CLOUDVOICE] = s.cloudVoice
+        this[K_CVNAME] = s.cloudVoiceName
+        this[K_CTTSMODEL] = s.cloudTtsModel
         this[K_BACKEND] = s.backendUrl
         this[K_CITY] = s.weatherCity
     }
@@ -192,6 +237,16 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
         val K_STREAM = booleanPreferencesKey("streaming")
         val K_TIMEOUT = intPreferencesKey("timeout_sec")
         val K_RETRIES = intPreferencesKey("max_retries")
+        val K_SLEEP = stringPreferencesKey("sleep_timeout")
+        val K_ENDPAUSE = intPreferencesKey("end_pause_ms")
+        val K_FULLDUPLEX = booleanPreferencesKey("full_duplex")
+        val K_MEDIA = booleanPreferencesKey("reduce_media")
+        val K_WAKECLOUD = booleanPreferencesKey("wake_cloud")
+        val K_EDGE = booleanPreferencesKey("edge_light")
+        val K_OVERLAY = booleanPreferencesKey("overlay_light")
+        val K_CLOUDVOICE = booleanPreferencesKey("cloud_voice")
+        val K_CVNAME = stringPreferencesKey("cloud_voice_name")
+        val K_CTTSMODEL = stringPreferencesKey("cloud_tts_model")
         val K_BACKEND = stringPreferencesKey("backend_url")
         val K_CITY = stringPreferencesKey("weather_city")
     }

@@ -65,6 +65,31 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
                 if (c.databaseWasReset) Text("Dhyan: Keystore key lost hone se local database naya banana pada; purana data unreadable tha.", color = UltronColors.Gold)
             }
         }
+        SectionLabel("Voice diagnostics (live, real values)")
+        val mic by c.mic.info.collectAsState()
+        val ld by c.live.diag.collectAsState()
+        val cloudErr by c.cloudVoice.lastError.collectAsState()
+        GlassCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                fun yn(b: Boolean) = if (b) "haan" else "nahi"
+                Text("Session: ${ld.state.label}", style = MaterialTheme.typography.titleMedium)
+                Text("Recorder: ${if (mic.recording) "recording" else "band"} · ${mic.sampleRate} Hz · source ${mic.source}", color = UltronColors.TextLo)
+                Text("Route: ${mic.route}", color = UltronColors.TextLo)
+                Text("Recorder opens: ${mic.recorderOpens} · recoveries: ${mic.recoveries} (ek session mein 1 hona chahiye)", color = UltronColors.TextLo)
+                Text("AEC: available ${yn(mic.aecAvailable)} · enabled ${yn(mic.aecEnabled)}", color = UltronColors.TextLo)
+                Text("Noise suppressor: available ${yn(mic.nsAvailable)} · enabled ${yn(mic.nsEnabled)} · AGC: off", color = UltronColors.TextLo)
+                Text("Echo mode: ${if (ld.commMode) "full-duplex (barge-in)" else "safe gating"} · TTS active: ${yn(ld.ttsActive)}", color = UltronColors.TextLo)
+                Text("VAD speech: ${yn(ld.vadSpeech)} · level ${"%.0f".format(ld.levelDb)} dB · noise floor ${"%.0f".format(ld.noiseFloorDb)} dB", color = UltronColors.TextLo)
+                Text("Utterances: ${ld.utterances} · echo discard: ${ld.discardedAsEcho} · too short: ${ld.rejectedShort}", color = UltronColors.TextLo)
+                Text("Last transcribe: ${ld.lastTranscribeMs?.let { "$it ms" } ?: "—"} · first reply audio: ${ld.lastReplyStartMs?.let { "$it ms" } ?: "—"}", color = UltronColors.TextLo)
+                ld.sleepInMs?.let { Text("Sleep in: ${it / 1000}s", color = UltronColors.TextLo) }
+                if (mic.silencedBySystem) Text("Android ne mic ko silence kiya hua hai.", color = UltronColors.Gold)
+                (mic.lastError ?: ld.lastError)?.let { Text("Last error: $it", color = UltronColors.Gold) }
+                cloudErr?.let { Text("Online voice: $it", color = UltronColors.Gold) }
+                ld.note?.let { Text(it, color = UltronColors.TextLo) }
+            }
+        }
+        Text("Ye sab asli measurements hain; koi hard-coded 'ON' nahi. Raw audio ya baatein yahan save nahi hoti.", style = MaterialTheme.typography.bodyMedium, color = UltronColors.TextLo)
         SectionLabel("Measured")
         StatsBlock()
         SectionLabel("Log (redacted, sirf memory mein)")
@@ -85,10 +110,10 @@ fun AboutScreen(onBack: () -> Unit) {
         Text("Configured creator: ${BuildConfig.CREATOR_NAME} (app configuration; independent authorship ka proof nahi).", color = UltronColors.TextLo, modifier = Modifier.padding(top = 6.dp))
 
         SectionLabel("Changelog")
-        Text("0.1.0 — pehla build: 3D avatar (built-in + apna GLB, live wallpaper), Home/Chat/Live voice, Awaaz Studio, Journal, Mood, Yaadein, Aaj reminders, Mausam (backend), Scan OCR, app kholna, YouTube search, encrypted local storage, secure backend proxy.", color = UltronColors.TextLo)
+        Text("0.2.0 — Live persistent mic (sleep timer, echo handling), Gemini online awaaz, themes/fonts, screen control, default assistant. 0.1.0 — pehla build: 3D avatar (built-in + apna GLB, live wallpaper), Home/Chat/Live voice, Awaaz Studio, Journal, Mood, Yaadein, Aaj reminders, Mausam (backend), Scan OCR, app kholna, YouTube search, encrypted local storage, secure backend proxy.", color = UltronColors.TextLo)
 
         SectionLabel("Is build mein nahi hai")
-        Text("Wake word / background listening, screen understanding (MediaProjection), avatar skeleton/animation aur verified model catalog, home-screen widget, accessibility automation, QR scanning, PC↔Phone link, smart model routing, Dream Journal, web search.", color = UltronColors.TextLo)
+        Text("Asli offline wake-word engine, screen-capture analysis (MediaProjection), avatar model catalog, home-screen widget, QR scanning, PC↔Phone link, web search. Live mic, screen control (Accessibility) aur default-assistant ab hain, par device par abhi test nahi hue.", color = UltronColors.TextLo)
 
         SectionLabel("Open-source licences")
         Text("AndroidX, Jetpack Compose, Kotlin, kotlinx.coroutines/serialization, OkHttp: Apache-2.0.\nSQLCipher for Android: BSD-style (Zetetic).\nGoogle ML Kit Text Recognition: ML Kit Terms of Service.\nWeather data: Open-Meteo (CC BY 4.0).", color = UltronColors.TextLo)
@@ -124,7 +149,7 @@ fun AutomationScreen(onBack: () -> Unit) {
         val n = notificationsAllowed(context)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text("Notifications"); if (n) StatusPill("Allowed", UltronColors.Green) else StatusPill("Blocked", UltronColors.Gold) }
         SectionLabel("Accessibility")
-        Text("Use nahi hoti — koi AccessibilityService register nahi hai.", color = UltronColors.TextLo)
+        Text("Optional screen control: Menu → Live aur Assistant se on karo. Commands: \"click <naam>\", \"scroll down\", \"back jao\", \"type <text>\", \"agent: <kaam>\".", color = UltronColors.TextLo)
     }
 }
 
@@ -134,7 +159,6 @@ private val infoPages = mapOf(
     "downloads" to InfoPage("Download Center", "Khaali — kuch download nahi hota", "Avatar models ka import/download Avatar Studio mein hota hai (aapki di hui https:// link ya file se, asli progress ke saath). Baaki koi model/voice download flow nahi hai; voice packs Android ke TTS settings se install hote hain (Awaaz Studio mein link hai)."),
     "websearch" to InfoPage("Web Search", "Setup chahiye", "Web search ke liye backend par ek asli search provider configure hona chahiye. Abhi koi configured nahi, isliye ULTRON live web results ka dawa nahi karta."),
     "screen" to InfoPage("Screen Samjho", "Is build mein nahi", "Screen understanding ke liye Android MediaProjection (system consent), foreground service, visible indicator aur Pause/Stop controls chahiye. Ye abhi implement nahi hua — ULTRON kabhi bhi chhupke screen capture ya upload nahi karta.", "Abhi: Scan tab se kisi image/photo ka text (OCR) padh sakte ho."),
-    "accessibility" to InfoPage("Accessibility automation", "Use nahi hoti", "Is build mein koi AccessibilityService nahi hai, isliye ULTRON dusre apps ke buttons dabata nahi. App kholna aur settings screens kholna normal Android intents se hota hai."),
     "subagents" to InfoPage("Sub-agents", "Configured nahi", "Is build mein koi alag sub-agent set up nahi hai. ULTRON ek hi assistant ki tarah kaam karta hai: commands device par, baaki sawaal AI se."),
     "guardian" to InfoPage("Voice Guardian", "Available nahi", "Ye feature voice samples (biometric data) maangta hai. Isme tumhari clear consent, local encrypted storage aur delete/disable control chahiye — jo is build mein nahi bana, isliye kuch collect nahi hota."),
     "optional" to InfoPage("Maps / Places", "Integrate nahi", "Maps ya Places ka koi integration is build mein nahi hai. Jab hoga tab yahan aur Settings mein alag se dikhega."),

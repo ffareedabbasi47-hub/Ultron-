@@ -125,3 +125,16 @@ Markets now has Watchlist/Portfolio/Analysis (NSE/BSE label, validated symbols, 
 - Transparent, forward-facing 3D avatar with expressions (lip-sync is approximate; TTS gives no phoneme data).
 - Removed rows for features that do not exist (connectors, guardian, sub-agents, maps, screen understanding, web search, PC link).
 - Tests: `backend` `npm test`; Kotlin unit tests under `app/src/test`. The Android layer has not been compiled in this environment; build via GitHub Actions / Android Studio.
+
+## Live conversation (v0.2)
+**Root cause of the old mic open/close loop:** every utterance created a new `SpeechRecognizer` session (utterance-oriented, ends by itself) and Home cancelled the mic when you left the screen.
+**Now:** one `AudioRecord` (VOICE_COMMUNICATION, 16 kHz) owned by `MicCapture`, kept open by `LiveSessionService` (foreground, microphone type, notification with Stop/Pause/Wake). VAD (`domain/live/Vad.kt`) decides speech boundaries in memory with hysteresis, pre-roll and an adaptive noise floor; the recorder is never reopened for that. Each finished utterance (not continuous audio) is sent to Gemini for transcription with your own key and cloud consent, then the normal reply pipeline runs; after ULTRON speaks, it returns to LISTENING by itself.
+- **Sleep timer** (Off/5/10/15/20 min): monotonic clock, paused while thinking/speaking, reset only by verified user speech (a non-empty transcript).
+- **Echo:** AcousticEchoCanceler + NoiseSuppressor are attached when the device offers them, and their real enabled state is shown in Diagnostics. Default "safe" mode ignores speech that starts while ULTRON talks (plus a short tail); "Full-duplex" allows barge-in and relies on the device AEC. Video/music from other apps cannot be perfectly removed; use a headset for best results.
+- **Wake phrase:** no offline wake-word engine is bundled. Optional opt-in cloud check in SLEEP (short phrases are sent to Gemini). Otherwise sleep releases the mic and the notification/Home button wakes it.
+- **Voice:** Gemini TTS online voices (your key), played through one AudioTrack, sentence-pipelined; failures fall back to the device voice. Model name is editable.
+- **Screen control:** optional Accessibility service (click/scroll/type/back/home/read, plus a bounded 12-step agent). Risky taps (send/pay/delete/call/confirm…) ask "haan/nahi"; password fields and the package installer are never touched.
+- **Default assistant:** `VoiceInteractionService` so ULTRON can be picked as digital assistant; the assist gesture opens ULTRON and starts live.
+- **Edge light:** rotating light around the screen while live (in-app, or over other apps with the overlay permission).
+
+**Verified here:** JVM unit tests for VAD, sleep clock, state transitions, echo gate, wake phrase, command parsing, agent JSON, Gemini wire formats. **Not verified:** everything that needs Android/a device (AudioRecord, AEC behaviour on Oppo, foreground service, accessibility, assistant role, overlay, Gemini TTS model availability).

@@ -30,7 +30,12 @@ class DeviceActionRunner(
     private val memory: MemoryDao,
     private val reminders: ReminderScheduler,
     private val tts: TtsController,
+    private val screen: com.ultron.ai.domain.ScreenControl,
+    private val broker: ConfirmationBroker,
 ) : ActionRunner {
+
+    /** Set by the container once the AI helper exists (avoids a construction cycle). */
+    var agent: ScreenAgent? = null
 
     override suspend fun run(action: UltronAction): ActionResult = when (action) {
         is UltronAction.OpenApp -> openApp(action.appName)
@@ -42,6 +47,30 @@ class DeviceActionRunner(
             tts.stop()
             ActionResult(true, "Theek hai, chup.")
         }
+        is UltronAction.Click -> needScreen { if (screenClick(action.label)) ActionResult(true, "\"${action.label}\" dabaya.") else ActionResult(false, "\"${action.label}\" screen par nahi mila ya dab nahi paya.") }
+        is UltronAction.TypeText -> needScreen { if (screen.typeText(action.text)) ActionResult(true, "Likh diya.") else ActionResult(false, "Koi input field nahi mila (ya wo password field hai).") }
+        is UltronAction.Scroll -> needScreen { if (screen.scroll(action.down)) ActionResult(true, "Scroll kiya.") else ActionResult(false, "Is screen par scroll karne layak kuch nahi mila.") }
+        is UltronAction.Navigate -> needScreen { if (screen.navigate(action.kind)) ActionResult(true, "Ho gaya.") else ActionResult(false, "Ye kar nahi paya.") }
+        UltronAction.ReadScreen -> needScreen { readScreen() }
+        is UltronAction.ScreenTask -> agent?.run(action.goal) ?: ActionResult(false, "Screen agent ready nahi hai.")
+    }
+
+    private suspend fun needScreen(block: suspend () -> ActionResult): ActionResult =
+        if (!screen.isEnabled()) ActionResult(false, "Screen control off hai. Menu → Assistant & permissions mein ULTRON ka Accessibility service on karo.") else block()
+
+    private suspend fun screenClick(label: String): Boolean {
+        if (com.ultron.ai.domain.RiskPolicy.needsConfirmation(label)) {
+            val yes = broker.ask("\"$label\" dabane wala hoon. Karun? Haan ya nahi bolo.", { t -> val k = tts.beginSpeech(0L); tts.enqueue(k, t); tts.endSpeech(k) })
+            if (!yes) return false
+        }
+        return screen.clickLabel(label)
+    }
+
+    private fun readScreen(): ActionResult {
+        val snap = screen.snapshot() ?: return ActionResult(false, "Screen padh nahi paya (secure screen ho sakti hai).")
+        if (com.ultron.ai.domain.RiskPolicy.packageBlocked(snap.packageName)) return ActionResult(false, "Is screen ko main nahi padhta.")
+        val texts = snap.nodes.map { it.label }.filter { it.isNotBlank() && it != "(password field)" }.distinct().take(12)
+        return if (texts.isEmpty()) ActionResult(true, "Screen par padhne layak text nahi mila.") else ActionResult(true, "Screen par: " + texts.joinToString(", "))
     }
 
     // ---- apps ----------------------------------------------------------------------------

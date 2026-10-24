@@ -136,7 +136,7 @@ private val menu = listOf(
         MenuItem("Marketing", Routes.MARKETING, Icons.Filled.Storefront),
         MenuItem("Documents", Routes.DOCS, Icons.Filled.Description),
         MenuItem("Website / Coding", Routes.CODING, Icons.Filled.Code),
-        MenuItem("Accessibility", Routes.ACCESS, Icons.Filled.AccessibilityNew),
+        MenuItem("Live aur Assistant", Routes.ACCESS, Icons.Filled.AccessibilityNew),
         MenuItem("Gaane / YouTube", Routes.GAANE, Icons.Filled.MusicNote),
         MenuItem("Padhai", Routes.chat(study = true), Icons.Filled.MenuBook),
         MenuItem("Journal / Notes", Routes.JOURNAL, Icons.Filled.Edit),
@@ -182,6 +182,10 @@ fun AppRoot(settings: UltronSettings) {
     val push: (String) -> Unit = { r -> nav.navigate(r) { launchSingleTop = true } }
     val back: () -> Unit = { if (!nav.popBackStack()) navigateTop(nav, Routes.HOME) }
 
+    val liveState by c.live.state.collectAsState()
+    val liveOn = liveState == com.ultron.ai.domain.live.LiveState.LISTENING || liveState == com.ultron.ai.domain.live.LiveState.USER_SPEECH ||
+        liveState == com.ultron.ai.domain.live.LiveState.THINKING || liveState == com.ultron.ai.domain.live.LiveState.SPEAKING
+    Box(Modifier.fillMaxSize()) {
     ModalNavigationDrawer(
         drawerState = drawer,
         gesturesEnabled = route == Routes.HOME || drawer.isOpen,
@@ -214,7 +218,7 @@ fun AppRoot(settings: UltronSettings) {
                     composable(Routes.MARKETING) { com.ultron.ai.ui.features.MarketingScreen(back, push) }
                     composable(Routes.DOCS) { WorkScreen(WorkKind.DOC, back, push) }
                     composable(Routes.CODING) { WorkScreen(WorkKind.CODE, back, push) }
-                    composable(Routes.ACCESS) { AccessibilityScreen(back) }
+                    composable(Routes.ACCESS) { AccessibilityScreen(settings, back) }
                     composable(Routes.SETTINGS) { SettingsHubScreen(back, push) }
                     composable(Routes.RULES) { RulesScreen(settings, back) }
                     composable(Routes.BACKUP) { BackupScreen(back) }
@@ -242,6 +246,12 @@ fun AppRoot(settings: UltronSettings) {
                 )
             }
         }
+    }
+    if (settings.edgeLight) com.ultron.ai.ui.components.LiveEdgeLight(
+        active = liveOn,
+        intense = liveState == com.ultron.ai.domain.live.LiveState.SPEAKING || liveState == com.ultron.ai.domain.live.LiveState.USER_SPEECH,
+        reducedMotion = settings.reducedMotion,
+    )
     }
 }
 

@@ -121,4 +121,103 @@ object GeminiWire {
 
     /** True if an HTTP 400 may be caused by our thinking field (so the caller retries without it). */
     fun looksLikeThinkingRejection(errorBody: String) = errorBody.contains("thinking", ignoreCase = true)
+
+    // ---------- Audio: speech-to-text (inline audio) and Gemini TTS ----------
+
+    fun generateUrl(model: String) = "$HOST/v1beta/models/$model:generateContent"
+
+    const val TRANSCRIBE_PROMPT =
+        "Transcribe the speech in this audio exactly as spoken. The speaker uses Hindi, English or Hinglish. " +
+            "Write Hindi words in Roman letters (Hinglish) unless the speaker clearly spoke only Hindi, then use Devanagari. " +
+            "Output ONLY the transcript, no quotes, no labels, no commentary. If there is no intelligible human speech, output exactly: [none]"
+
+    fun transcribeBody(wavBase64: String, thinking: ThinkingMode): String = buildJsonObject {
+        put("contents", buildJsonArray {
+            add(buildJsonObject {
+                put("role", "user")
+                putJsonArray("parts") {
+                    add(buildJsonObject { put("text", TRANSCRIBE_PROMPT) })
+                    add(buildJsonObject { putJsonObject("inline_data") { put("mime_type", "audio/wav"); put("data", wavBase64) } })
+                }
+            })
+        })
+        putJsonObject("generationConfig") {
+            put("temperature", 0.0)
+            put("maxOutputTokens", 256)
+            when (thinking) {
+                ThinkingMode.LEVEL_MINIMAL -> putJsonObject("thinkingConfig") { put("thinkingLevel", "minimal") }
+                ThinkingMode.BUDGET_ZERO -> putJsonObject("thinkingConfig") { put("thinkingBudget", 0) }
+                ThinkingMode.NONE -> Unit
+            }
+        }
+    }.toString()
+
+    /** Concatenated non-thought text of a non-streaming generateContent response ("" if none). */
+    fun parseText(body: String): String {
+        val obj = try { json.parseToJsonElement(body).jsonObject } catch (_: Exception) { return "" }
+        val parts = ((obj["candidates"] as? JsonArray)?.firstOrNull() as? JsonObject)?.get("content")?.let { it as? JsonObject }?.get("parts") as? JsonArray ?: return ""
+        return buildString {
+            for (p in parts) {
+                val po = p as? JsonObject ?: continue
+                if ((po["thought"] as? JsonPrimitive)?.booleanOrNull == true) continue
+                (po["text"] as? JsonPrimitive)?.contentOrNull?.let { append(it) }
+            }
+        }.trim()
+    }
+
+    /** Transcript text, or null when the model reported no speech. */
+    fun cleanTranscript(raw: String): String? {
+        val t = raw.trim().trim('"').trim()
+        if (t.isEmpty() || t.equals("[none]", ignoreCase = true) || t.equals("none", ignoreCase = true)) return null
+        return t
+    }
+
+    /** Style instruction goes in front of the text; the model reads it as direction, not as words to say. */
+    const val VOICE_STYLE =
+        "Say the following in a deep, slow, calm, controlled and slightly menacing voice, like a composed machine intelligence. " +
+            "Clear pronunciation, deliberate pauses, never shouting: "
+
+    fun ttsBody(text: String, voiceName: String): String = buildJsonObject {
+        put("contents", buildJsonArray {
+            add(buildJsonObject {
+                putJsonArray("parts") { add(buildJsonObject { put("text", VOICE_STYLE + text) }) }
+            })
+        })
+        putJsonObject("generationConfig") {
+            putJsonArray("responseModalities") { add(kotlinx.serialization.json.JsonPrimitive("AUDIO")) }
+            putJsonObject("speechConfig") {
+                putJsonObject("voiceConfig") { putJsonObject("prebuiltVoiceConfig") { put("voiceName", voiceName) } }
+            }
+        }
+    }.toString()
+
+    /** Base64 audio from a TTS response (raw 16-bit PCM, 24 kHz mono unless mimeType says otherwise). */
+    data class TtsAudio(val base64: String, val sampleRate: Int)
+
+    fun parseTtsAudio(body: String): TtsAudio? {
+        val obj = try { json.parseToJsonElement(body).jsonObject } catch (_: Exception) { return null }
+        val parts = ((obj["candidates"] as? JsonArray)?.firstOrNull() as? JsonObject)?.get("content")?.let { it as? JsonObject }?.get("parts") as? JsonArray ?: return null
+        for (p in parts) {
+            val inline = ((p as? JsonObject)?.get("inlineData") ?: (p as? JsonObject)?.get("inline_data")) as? JsonObject ?: continue
+            val data = (inline["data"] as? JsonPrimitive)?.contentOrNull ?: continue
+            val mime = ((inline["mimeType"] ?: inline["mime_type"]) as? JsonPrimitive)?.contentOrNull.orEmpty()
+            val rate = Regex("rate=(\\d+)").find(mime)?.groupValues?.get(1)?.toIntOrNull() ?: 24_000
+            return TtsAudio(data, rate)
+        }
+        return null
+    }
+
+    /** Voices offered in the picker (names are Gemini prebuilt voices; descriptors are Google's). */
+    val CLOUD_VOICES: List<Pair<String, String>> = listOf(
+        "Algenib" to "Gravelly (deep, rough)",
+        "Gacrux" to "Mature",
+        "Alnilam" to "Firm",
+        "Orus" to "Firm",
+        "Charon" to "Informative",
+        "Rasalgethi" to "Informative",
+        "Schedar" to "Even",
+        "Iapetus" to "Clear",
+        "Umbriel" to "Easy-going",
+        "Fenrir" to "Excitable",
+    )
 }

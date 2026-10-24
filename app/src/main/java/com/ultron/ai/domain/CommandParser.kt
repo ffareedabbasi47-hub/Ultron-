@@ -35,11 +35,35 @@ object CommandParser {
     private val openEn = Regex("^(?:open|launch|start)\\s+(.+)$")
     private val openHi = Regex("^(.+?)\\s+(?:khol|kholo|kholna|open kar|open karo|chalu kar|chalu karo|start kar|start karo)$")
 
+    private val navBack = Regex("^(?:back|peeche|piche|wapas|vapas)(?:\\s+(?:jao|ja|chalo|karo|kar do))?$")
+    private val navHome = Regex("^(?:home|home screen)(?:\\s+(?:jao|ja|chalo|par jao|pe jao|karo))?$")
+    private val navRecents = Regex("^(?:recent apps?|recents|recent screen)(?:\\s+(?:dikhao|kholo|khol|show))?$")
+    private val navNotif = Regex("^(?:notifications?|notification panel|notification bar)(?:\\s+(?:dikhao|kholo|khol|show|neeche karo))?$")
+    private val scrollDown = Regex("^(?:scroll\\s+down|neeche\\s+scroll(?:\\s+kar\\w*)?|scroll\\s+neeche|niche\\s+scroll(?:\\s+kar\\w*)?|scroll\\s+karo|neeche jao|niche jao)$")
+    private val scrollUp = Regex("^(?:scroll\\s+up|upar\\s+scroll(?:\\s+kar\\w*)?|scroll\\s+upar|upar jao)$")
+    private val readScreen = Regex("^(?:screen\\s+(?:par|pe|me|mein)\\s+kya\\s+(?:hai|likha hai)|screen\\s+padh(?:o|na)?|what(?:'s| is)\\s+on\\s+(?:my\\s+)?screen|read\\s+(?:my\\s+)?screen)$")
+    private val clickEn = Regex("^(?:click|tap|press)\\s+(?:on\\s+)?(.+)$")
+    private val clickHi = Regex("^(.+?)\\s+(?:pe|par|per)\\s+(?:click|tap|press)(?:\\s+kar\\w*)?$|^(.+?)\\s+(?:dabao|dabana|dabaiye|dabado|dba do)$")
+    private val typeEn = Regex("^(?:type|likho|likh do|likh)\\s*[:\\-]?\\s+(.+)$")
+    private val task = Regex("^(?:agent|task|kaam)\\s*[:\\-]?\\s+(.+)$|^(?:phone|screen)\\s+(?:mein|me|pe|par)\\s+(.+?)\\s+(?:kar do|karo|kar|kardo|karna)$")
+
     fun parse(raw: String): UltronAction? {
         val t = normalize(raw)
         if (t.isEmpty() || t.length > 200) return null
 
         if (stop.matches(t)) return UltronAction.StopSpeaking
+
+        if (navBack.matches(t)) return UltronAction.Navigate(NavKind.BACK)
+        if (navHome.matches(t)) return UltronAction.Navigate(NavKind.HOME)
+        if (navRecents.matches(t)) return UltronAction.Navigate(NavKind.RECENTS)
+        if (navNotif.matches(t)) return UltronAction.Navigate(NavKind.NOTIFICATIONS)
+        if (scrollDown.matches(t)) return UltronAction.Scroll(down = true)
+        if (scrollUp.matches(t)) return UltronAction.Scroll(down = false)
+        if (readScreen.matches(t)) return UltronAction.ReadScreen
+        task.matchEntire(t)?.let { m -> return UltronAction.ScreenTask((m.groupValues[1].ifEmpty { m.groupValues[2] }).trim()) }
+        typeEn.matchEntire(t)?.let { return UltronAction.TypeText(raw.trim().replace(Regex("^(?i)(?:type|likho|likh do|likh)\\s*[:\\-]?\\s+"), "").trim().ifEmpty { it.groupValues[1] }) }
+        clickEn.matchEntire(t)?.let { return UltronAction.Click(it.groupValues[1].trim()) }
+        clickHi.matchEntire(t)?.let { m -> return UltronAction.Click((m.groupValues[1].ifEmpty { m.groupValues[2] }).trim()) }
 
         remember.matchEntire(t)?.let { return UltronAction.Remember(it.groupValues[1].trim()) }
 

@@ -15,6 +15,7 @@ import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 data class EngineInfo(val packageName: String, val label: String)
 
@@ -41,7 +42,10 @@ class TtsController(
     private val context: Context,
     private val diagnostics: DiagnosticsLog,
     private val stats: LatencyStats,
+    private val cloud: CloudVoice? = null,
 ) {
+    private var deviceSpeaking = false
+    private var cloudToken = -1
     private val lock = Any()
     private var tts: TextToSpeech? = null
     private var settings = UltronSettings()
@@ -56,6 +60,24 @@ class TtsController(
 
     private val _state = MutableStateFlow(TtsState())
     val state: StateFlow<TtsState> = _state
+
+    private fun publishSpeaking() {
+        val on = deviceSpeaking || (cloud?.speaking?.value == true)
+        _state.update { it.copy(speaking = on) }
+    }
+
+    /** True from beginSpeech until everything (device and online voice) has really finished playing. */
+    fun isActive(): Boolean = synchronized(lock) { !(ended && pending == 0) } || (cloud?.active == true)
+
+    init {
+        cloud?.let { c ->
+            // Mirror the online voice's real playing state into the shared speaking flag.
+            val sc = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main.immediate + kotlinx.coroutines.SupervisorJob())
+            sc.launch { c.speaking.collect { publishSpeaking(); if (!it) abandonFocusIfIdle() } }
+        }
+    }
+
+    private fun abandonFocusIfIdle() { if (!isActive()) abandonFocus() }
 
     private val attrs = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_ASSISTANT)
@@ -172,10 +194,23 @@ class TtsController(
         this.requestStartMs = requestStartMs
         tts?.stop()
         requestFocus()
+        cloudToken = if (cloud != null && cloud.enabled()) cloud.begin() else { cloud?.stop(); -1 }
         generation
     }
 
     fun enqueue(token: Int, text: String) {
+        if (cloud != null && cloudToken >= 0 && token == synchronized(lock) { generation }) {
+            if (text.isBlank()) return
+            val reqStart = synchronized(lock) { if (!firstAudioRecorded) requestStartMs else 0L }
+            cloud.enqueue(cloudToken, text, fallback = { t -> deviceEnqueue(token, t) }) {
+                if (reqStart > 0L) { stats.recordFirstAudio(System.currentTimeMillis() - reqStart); synchronized(lock) { firstAudioRecorded = true } }
+            }
+            return
+        }
+        deviceEnqueue(token, text)
+    }
+
+    private fun deviceEnqueue(token: Int, text: String) {
         val engine: TextToSpeech
         val id: String
         synchronized(lock) {
@@ -198,6 +233,7 @@ class TtsController(
     /** No more chunks will come for this session. Speaking state clears once the queue drains. */
     fun endSpeech(token: Int) {
         synchronized(lock) { if (token == generation) ended = true }
+        if (cloudToken >= 0) cloud?.end(cloudToken)
         maybeFinish()
     }
 
@@ -208,6 +244,9 @@ class TtsController(
             ended = true
             tts?.stop()
         }
+        cloud?.stop()
+        cloudToken = -1
+        deviceSpeaking = false
         abandonFocus()
         _state.update { it.copy(speaking = false) }
     }
@@ -234,7 +273,8 @@ class TtsController(
                 } else null
             }
             record?.let { stats.recordFirstAudio(it) }
-            _state.update { it.copy(speaking = true) }
+            deviceSpeaking = true
+            publishSpeaking()
         }
 
         override fun onDone(utteranceId: String?) = utteranceFinished()
@@ -261,8 +301,9 @@ class TtsController(
     private fun maybeFinish() {
         val done = synchronized(lock) { ended && pending == 0 }
         if (done) {
-            _state.update { it.copy(speaking = false) }
-            abandonFocus()
+            deviceSpeaking = false
+            publishSpeaking()
+            if (cloud?.active != true) abandonFocus()
         }
     }
 

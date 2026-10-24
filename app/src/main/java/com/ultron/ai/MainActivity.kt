@@ -21,6 +21,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleLaunchIntent(intent)
         val c = container
         setContent {
             // null until DataStore has really loaded, so TTS starts with the saved engine/voice.
@@ -46,18 +47,35 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleLaunchIntent(intent)
+    }
+
+    private fun handleLaunchIntent(intent: android.content.Intent?) {
+        when (intent?.action) {
+            ACTION_LIVE_START, android.content.Intent.ACTION_ASSIST, android.content.Intent.ACTION_VOICE_COMMAND ->
+                container.liveStartRequest.value = true
+        }
+    }
+
     override fun onStop() {
         super.onStop()
-        // Never keep the mic open or keep talking when the app leaves the foreground.
+        // The old one-shot recognizer never outlives the screen. A LIVE session is different: it is owned by
+        // its foreground service (visible notification, Stop button), so it and its replies keep going.
         container.stt.cancel()
-        container.tts.stop()
+        if (container.live.state.value == com.ultron.ai.domain.live.LiveState.STOPPED) container.tts.stop()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         if (isFinishing) {
             container.stt.release()
-            container.tts.shutdown()
+            if (container.live.state.value == com.ultron.ai.domain.live.LiveState.STOPPED) container.tts.shutdown()
         }
+    }
+
+    companion object {
+        const val ACTION_LIVE_START = "com.ultron.ai.LIVE_START"
     }
 }

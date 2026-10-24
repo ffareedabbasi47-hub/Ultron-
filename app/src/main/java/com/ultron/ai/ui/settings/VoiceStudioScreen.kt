@@ -37,6 +37,7 @@ import com.ultron.ai.platform.voice.VoiceInfo
 import com.ultron.ai.platform.voice.VoiceRanker
 import com.ultron.ai.ui.LocalContainer
 import com.ultron.ai.ui.components.GlassCard
+import com.ultron.ai.ui.components.LabeledField
 import com.ultron.ai.ui.components.ScreenHeader
 import com.ultron.ai.ui.components.SectionLabel
 import com.ultron.ai.ui.components.StatusPill
@@ -45,6 +46,7 @@ import kotlinx.coroutines.launch
 
 private const val SAMPLE = "Main sun raha hoon. Soch samajh kar bolna, kyunki main kuch bhi bhoolta nahi."
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun VoiceStudioScreen(settings: UltronSettings, onBack: () -> Unit) {
     val c = LocalContainer.current
@@ -82,7 +84,30 @@ fun VoiceStudioScreen(settings: UltronSettings, onBack: () -> Unit) {
             }
         }
 
-        SectionLabel("Style")
+        SectionLabel("Online awaaz (Gemini) — sabse natural")
+        val cloudErr by c.cloudVoice.lastError.collectAsState()
+        val hasKey = remember(settings) { c.settings.geminiKey() != null }
+        SwitchRow("Online awaaz use karo", if (!hasKey) "Gemini API key chahiye (Menu → AI Brain)." else if (!settings.cloudConsent) "Cloud AI permission chahiye (Privacy)." else "Jawab ka text Google ko bheja jata hai awaaz banane ke liye. Internet chahiye; fail hone par device voice bolti hai.", settings.cloudVoice) { v -> update { it.copy(cloudVoice = v) } }
+        fun previewCloud(name: String? = null) = scope.launch {
+            if (name != null) c.settings.update { it.copy(cloudVoiceName = name) }
+            kotlinx.coroutines.delay(350) // let the saved choice reach the voice engine
+            c.tts.preview(SAMPLE)
+        }
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.ultron.ai.data.ai.GeminiWire.CLOUD_VOICES.forEach { (n, d) ->
+                FilterChip(selected = settings.cloudVoiceName == n, onClick = { previewCloud(n) }, label = { Text("$n · $d") })
+            }
+        }
+        LabeledField(settings.cloudTtsModel, { v -> update { it.copy(cloudTtsModel = v.trim()) } }, "Online voice model")
+        Text("Model ka naam Google badalta rehta hai. 'model nahi mila' aaye to AI Studio ki docs se naya TTS model naam yahan daalo.", style = MaterialTheme.typography.bodyMedium, color = UltronColors.TextLo)
+        cloudErr?.let { Text(it, color = UltronColors.Gold, style = MaterialTheme.typography.bodyMedium) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { previewCloud() }) { Text("Online voice test") }
+            OutlinedButton(onClick = { c.tts.stop() }) { Text("Stop") }
+        }
+        Text("Ye kisi film actor ki awaaz nahi hai: Google ki ek built-in voice, ek gehre, shaant, khatarnak andaaz mein bolne ke nirdesh ke saath.", style = MaterialTheme.typography.bodyMedium, color = UltronColors.TextLo)
+
+        SectionLabel("Device voice (backup)")
         SliderRow("Speed", settings.ttsRate, 0.5f..1.5f) { v -> update { it.copy(ttsRate = v) } }
         SliderRow("Pitch (kam = gehri awaaz)", settings.ttsPitch, 0.5f..1.5f) { v -> update { it.copy(ttsPitch = v) } }
         SliderRow("Volume", settings.ttsVolume, 0.2f..1f) { v -> update { it.copy(ttsVolume = v) } }
@@ -135,9 +160,9 @@ fun VoiceStudioScreen(settings: UltronSettings, onBack: () -> Unit) {
         Text("Speech recognition: ${if (c.stt.isAvailable()) "device recognizer available (network ki zaroorat device par depend karti hai)" else "available nahi"}", style = MaterialTheme.typography.bodyMedium, color = UltronColors.TextLo, modifier = Modifier.padding(top = 6.dp))
         GlassCard(Modifier.fillMaxWidth().padding(top = 10.dp)) {
             Column(Modifier.padding(14.dp)) {
-                StatusPill("Wake word: available nahi", UltronColors.TextLo)
+                StatusPill("Live: mic ek baar khulta hai", UltronColors.Cyan)
                 Text(
-                    "\"Hey Ultron\" jaisi hamesha-on detection ke liye ek asli low-power wake-word engine aur foreground service chahiye. Wo is build mein nahi hai, aur main normal speech recognition ko background mein baar-baar chalake use \"always-on\" nahi bolunga. Abhi push-to-talk (mic button) use hota hai.",
+                    "Mic button ab Live session shuru karta hai (ek persistent mic, notification mein Stop). 'Hey Ultron' ke liye asli low-power wake-word engine is build mein nahi hai; Menu → Live aur Assistant mein sleep ke dauran cloud check ka opt-in option hai. Sleep timer, echo aur permissions wahin hain.",
                     style = MaterialTheme.typography.bodyMedium, color = UltronColors.TextLo, modifier = Modifier.padding(top = 8.dp),
                 )
             }

@@ -103,8 +103,8 @@ fun HomeScreen(
 ) {
     val c = LocalContainer.current
     val scope = rememberCoroutineScope()
-    val state by c.assistantState.collectAsState()
-    val level by c.stt.level.collectAsState()
+    val appState by c.assistantState.collectAsState()
+    val sttLevel by c.stt.level.collectAsState()
     val weather by c.weather.state.collectAsState()
     val mood by c.db.mood().observeLatest().collectAsState(initial = null)
     val nextReminder by c.db.reminders().observeNext().collectAsState(initial = null)
@@ -122,26 +122,54 @@ fun HomeScreen(
 
     LaunchedEffect(settings.backendUrl, settings.weatherCity) { c.weather.refresh() }
 
-    fun listen() {
-        c.turns.cancel(); c.turns.dismissError(); c.stt.clearError()
-        c.stt.start(settings.language.speechTag) { text ->
-            scope.launch {
-                val id = c.engine.latestOrNew(ChatMode.CHAT)
-                c.turns.submit(id, text, ChatMode.CHAT, speak = true)
-            }
-        }
+    val liveState by c.live.state.collectAsState()
+    val liveLevel by c.live.level.collectAsState()
+    val liveMsg by c.live.message.collectAsState()
+    val liveOn = liveState != com.ultron.ai.domain.live.LiveState.STOPPED
+    val state = if (!liveOn) appState else when (liveState) {
+        com.ultron.ai.domain.live.LiveState.LISTENING, com.ultron.ai.domain.live.LiveState.USER_SPEECH, com.ultron.ai.domain.live.LiveState.SLEEP -> AssistantState.LISTENING
+        com.ultron.ai.domain.live.LiveState.THINKING -> AssistantState.THINKING
+        com.ultron.ai.domain.live.LiveState.SPEAKING -> AssistantState.SPEAKING
+        com.ultron.ai.domain.live.LiveState.AUDIO_ERROR, com.ultron.ai.domain.live.LiveState.PERMISSION_REQUIRED -> AssistantState.ERROR
+        else -> AssistantState.IDLE
     }
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        micGranted = granted; micAsked = true
-        if (granted) listen()
+    val level = if (liveOn) liveLevel else sttLevel
+
+    fun startLive() {
+        c.turns.dismissError()
+        com.ultron.ai.platform.live.LiveSessionService.start(context)
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
+        micGranted = res[Manifest.permission.RECORD_AUDIO] == true || hasMic(context)
+        micAsked = true
+        if (micGranted) startLive()
     }
     fun onMicTap() {
-        if (!micGranted) { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO); return }
-        if (stt is SttState.Listening) c.stt.stopListening() else listen()
+        when {
+            liveOn && liveState != com.ultron.ai.domain.live.LiveState.SLEEP && liveState != com.ultron.ai.domain.live.LiveState.PAUSED &&
+                liveState != com.ultron.ai.domain.live.LiveState.AUDIO_ERROR && liveState != com.ultron.ai.domain.live.LiveState.PERMISSION_REQUIRED ->
+                com.ultron.ai.platform.live.LiveSessionService.stop(context)
+            liveOn -> startLive() // resume / wake
+            !micGranted -> {
+                val perms = buildList {
+                    add(Manifest.permission.RECORD_AUDIO)
+                    if (android.os.Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                permissionLauncher.launch(perms.toTypedArray())
+            }
+            else -> startLive()
+        }
     }
     val micReq by c.micRequest.collectAsState()
     LaunchedEffect(micReq) { if (micReq) { c.micRequest.value = false; onMicTap() } }
-    DisposableEffect(Unit) { onDispose { c.stt.cancel() } } // never leave the mic open off-screen
+    val liveReq by c.liveStartRequest.collectAsState()
+    LaunchedEffect(liveReq) {
+        if (liveReq) {
+            c.liveStartRequest.value = false
+            if (c.live.state.value == com.ultron.ai.domain.live.LiveState.STOPPED || c.live.state.value == com.ultron.ai.domain.live.LiveState.SLEEP || c.live.state.value == com.ultron.ai.domain.live.LiveState.PAUSED) onMicTap()
+        }
+    }
+    // NOTE: leaving Home does NOT touch the microphone: the live session is owned by LiveSessionEngine + its service.
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -220,7 +248,7 @@ fun HomeScreen(
                         )
                         Equalizer(state, level)
                         Text(
-                            if (state == AssistantState.IDLE) "BOLO, KAISE HELP KARUN?" else coreStateLabel(state).uppercase(),
+                            if (liveOn) "LIVE · " + liveState.label else if (state == AssistantState.IDLE) "BOLO, KAISE HELP KARUN?" else coreStateLabel(state).uppercase(),
                             style = MaterialTheme.typography.labelSmall, color = UltronColors.TextLo, textAlign = TextAlign.Center,
                         )
                     }
@@ -230,13 +258,24 @@ fun HomeScreen(
 
         // Problems only (permission / consent / error). The conversation itself lives in Chat.
         Notice(
-            micGranted = micGranted, permanentlyDenied = micAsked && !hasMic(context), stt = stt, turn = turn,
+            micGranted = micGranted, permanentlyDenied = micAsked && !hasMic(context), stt = liveMsg?.let { SttState.Error(it) } ?: stt, turn = turn,
             onSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))) },
             onRetry = { c.turns.dismissError(); c.turns.retry(ChatMode.CHAT, true) },
             onConsent = { scope.launch { c.turns.grantConsentAndRetry(ChatMode.CHAT, true) } },
             onAiBrain = { c.turns.dismissError(); onNavigate(Routes.AI) },
             onDismiss = { c.turns.dismissError(); c.stt.clearError() },
         )
+
+        val confirmQ by c.broker.pending.collectAsState()
+        confirmQ?.let { q ->
+            GlassCard(Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(20.dp)) {
+                Row(Modifier.padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(q, color = UltronColors.Gold, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 3)
+                    TextButton(onClick = { c.broker.answer(true) }) { Text("Haan") }
+                    TextButton(onClick = { c.broker.answer(false) }) { Text("Nahi") }
+                }
+            }
+        }
 
         // Quick actions
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

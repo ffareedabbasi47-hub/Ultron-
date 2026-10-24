@@ -3,4 +3,5 @@
     <string name="app_name">ULTRON</string>
     <string name="wallpaper_label">ULTRON Avatar</string>
     <string name="wallpaper_description">Live 3D ULTRON avatar. Sirf built-in model dikhta hai.</string>
+    <string name="accessibility_description">ULTRON screen control. Sirf aapke command par: button dabana, scroll, type, back/home. Passwords nahi padhta, chhupke kuch record nahi karta. Kabhi bhi band kar sakte ho.</string>
 </resources>
