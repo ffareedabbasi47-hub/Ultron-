@@ -44,7 +44,9 @@ private const val HOST_ROOT = "https://appassets.androidplatform.net"
 /** Receives events from the page. Only our own bundled page can reach it (navigation is locked). */
 private class Bridge(
     private val readModelBytes: (String) -> ByteArray?,
-    private val onEvent: (String, String) -> Unit,
+    // NOT named onEvent: it would be shadowed by the @JavascriptInterface method below, which then called itself forever
+    // (events never reached the app, so the 3D avatar stayed on "loading" and the main thread looped).
+    private val deliverEvent: (String, String) -> Unit,
 ) {
     private val main = Handler(Looper.getMainLooper())
     /** Fallback when fetch() of the model fails: only safe *.glb names; from private storage or bundled assets. */
@@ -52,7 +54,7 @@ private class Bridge(
         val clean = fileName.trim()
         if (!GlbFiles.isSafeFileName(clean)) "" else Base64.encodeToString(readModelBytes(clean) ?: ByteArray(0), Base64.NO_WRAP)
     } catch (_: Throwable) { "" }
-    @JavascriptInterface fun onEvent(type: String, msg: String) { main.post { onEvent(type, msg) } }
+    @JavascriptInterface fun onEvent(type: String, msg: String) { main.post { deliverEvent(type, msg) } }
 }
 
 private fun moodFor(s: AssistantState) = when (s) {

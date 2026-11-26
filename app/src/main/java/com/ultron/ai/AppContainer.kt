@@ -133,6 +133,21 @@ class AppContainer(private val app: Application) {
             val action: com.ultron.ai.domain.UltronAction? = when (name) {
                 "open_app" -> args["name"]?.takeIf { it.isNotBlank() }?.let { com.ultron.ai.domain.UltronAction.OpenApp(it.take(60)) }
                 "youtube_search" -> args["query"]?.takeIf { it.isNotBlank() }?.let { com.ultron.ai.domain.UltronAction.YouTubeSearch(it.take(120)) }
+                "phone_toggle" -> {
+                    val t = when (args["name"]?.lowercase()?.replace(" ", "_")) {
+                        "wifi", "wi-fi" -> com.ultron.ai.domain.ToggleTarget.WIFI
+                        "hotspot" -> com.ultron.ai.domain.ToggleTarget.HOTSPOT
+                        "bluetooth" -> com.ultron.ai.domain.ToggleTarget.BLUETOOTH
+                        "airplane" -> com.ultron.ai.domain.ToggleTarget.AIRPLANE
+                        "mobile_data" -> com.ultron.ai.domain.ToggleTarget.MOBILE_DATA
+                        "location" -> com.ultron.ai.domain.ToggleTarget.LOCATION
+                        "nfc" -> com.ultron.ai.domain.ToggleTarget.NFC
+                        "torch", "flashlight" -> com.ultron.ai.domain.ToggleTarget.TORCH
+                        else -> null
+                    }
+                    val on = when (args["state"]?.lowercase()) { "on" -> true; "off" -> false; else -> null }
+                    if (t != null && on != null) com.ultron.ai.domain.UltronAction.SetToggle(t, on) else null
+                }
                 "build_project" -> args["brief"]?.takeIf { it.isNotBlank() }?.let { com.ultron.ai.domain.UltronAction.BuildProject(it.take(600)) }
                 "set_reminder" -> args["text"]?.takeIf { it.isNotBlank() }?.let {
                     com.ultron.ai.domain.UltronAction.SetReminder(it.take(120), (args["minutes"]?.toIntOrNull() ?: 10).coerceIn(1, 1440))

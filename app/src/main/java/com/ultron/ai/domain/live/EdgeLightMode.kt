@@ -17,8 +17,6 @@ enum class EdgeMode(
     val pulse: Boolean = false,
 ) {
     OFF(0L, 0f, 0f, 0),
-    /** Armed, waiting for the wake word: dim and slow. */
-    IDLE(9000L, 2.5f, 0.35f, 20),
     LISTENING(4200L, 3.5f, 0.75f, 30),
     USER_SPEECH(2400L, 4.5f, 0.95f, 45),
     THINKING(6000L, 3.5f, 0.6f, 30, pulse = true),
@@ -36,7 +34,8 @@ object EdgeModes {
         LiveState.USER_SPEECH -> EdgeMode.USER_SPEECH
         LiveState.THINKING -> EdgeMode.THINKING
         LiveState.SPEAKING -> EdgeMode.SPEAKING
-        LiveState.SLEEP -> if (micRunning) EdgeMode.IDLE else EdgeMode.OFF
+        // Armed / sleeping (mic open only for the wake word): NO light at all. It lights up when the wake word is heard.
+        LiveState.SLEEP -> EdgeMode.OFF
         LiveState.STOPPED, LiveState.STARTING, LiveState.PAUSED, LiveState.PERMISSION_REQUIRED, LiveState.AUDIO_ERROR -> EdgeMode.OFF
     }
 }

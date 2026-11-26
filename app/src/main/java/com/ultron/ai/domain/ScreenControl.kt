@@ -36,7 +36,14 @@ interface ScreenControl {
     fun typeText(text: String): Boolean
     fun scroll(down: Boolean): Boolean
     fun navigate(kind: NavKind): Boolean
+    /**
+     * Finds the on-screen switch for one of [hints] in the CURRENT window and makes it [on].
+     * Returns ALREADY (was already right), CHANGED (clicked and re-read the state), or NOT_FOUND / FAILED.
+     */
+    fun setSwitch(hints: List<String>, on: Boolean, allowSingle: Boolean = true): SwitchResult = SwitchResult.NOT_FOUND
 }
+
+enum class SwitchResult { ALREADY, CHANGED, NOT_FOUND, FAILED }
 
 /** Decides which on-screen taps need an explicit "haan" first. Conservative on purpose. */
 object RiskPolicy {

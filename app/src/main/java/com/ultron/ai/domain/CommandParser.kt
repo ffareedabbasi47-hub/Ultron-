@@ -23,8 +23,16 @@ object CommandParser {
     )
 
     private val settingsSpecific = Regex(
-        "^(?:open\\s+)?(wifi|wi-fi|bluetooth|display|sound|volume|notification|notifications)\\s+settings?(?:\\s+(?:khol|kholo|kholna|open))?$",
+        "^(?:open\\s+)?(wifi|wi-fi|bluetooth|display|sound|volume|notification|notifications|hotspot|hot spot|airplane|airplane mode|flight mode|mobile data|data|location|gps|battery|apps?|storage|nfc|date|time|language|accessibility|security|network|internet|dnd|do not disturb)\\s+settings?(?:\\s+(?:khol|kholo|kholna|open))?$",
     )
+
+    // "wifi on karo", "hotspot band kar do", "turn off bluetooth", "torch chalu"
+    private const val TOG_NAME = "(wi-?fi|hot ?spot|bluetooth|airplane mode|flight mode|airplane|mobile data|data|location|gps|nfc|torch|flashlight|flash light)"
+    private const val ON_W = "(on|off|chalu|shuru|start|enable|band|bandh|stop|disable)"
+    private const val DO_W = "(?:\\s+(?:kar|karo|kardo|kar do|kr do|krdo|kar de|karna|do))?"
+    private val toggleVerbFirst = Regex("^(?:turn|switch|set)\\s+(on|off)\\s+(?:the\\s+)?$TOG_NAME$")
+    private val toggleNameMid = Regex("^(?:turn|switch)\\s+(?:the\\s+)?$TOG_NAME\\s+(on|off)$")
+    private val toggleNameFirst = Regex("^$TOG_NAME\\s+(?:ko\\s+)?$ON_W$DO_W$")
     private val settingsMain = Regex("^(?:open\\s+)?settings?(?:\\s+(?:khol|kholo|kholna|open|open kar|open karo))?$")
 
     // Explicit hand-offs to the Builder agent: "builder se X banwao" / "X website banao".
@@ -68,6 +76,9 @@ object CommandParser {
         clickEn.matchEntire(t)?.let { return UltronAction.Click(it.groupValues[1].trim()) }
         clickHi.matchEntire(t)?.let { m -> return UltronAction.Click((m.groupValues[1].ifEmpty { m.groupValues[2] }).trim()) }
 
+        parseToggle(t)?.let { return it }
+        parseDevice(t)?.let { return it }
+
         remember.matchEntire(t)?.let { return UltronAction.Remember(it.groupValues[1].trim()) }
 
         remindEn.matchEntire(t)?.let {
@@ -83,6 +94,20 @@ object CommandParser {
                 "bluetooth" -> SettingsTarget.BLUETOOTH
                 "display" -> SettingsTarget.DISPLAY
                 "sound", "volume" -> SettingsTarget.SOUND
+                "hotspot", "hot spot" -> SettingsTarget.HOTSPOT
+                "airplane", "airplane mode", "flight mode" -> SettingsTarget.AIRPLANE
+                "mobile data", "data" -> SettingsTarget.MOBILE_DATA
+                "location", "gps" -> SettingsTarget.LOCATION
+                "battery" -> SettingsTarget.BATTERY
+                "app", "apps" -> SettingsTarget.APPS
+                "storage" -> SettingsTarget.STORAGE
+                "nfc" -> SettingsTarget.NFC
+                "date", "time" -> SettingsTarget.DATE
+                "language" -> SettingsTarget.LANGUAGE
+                "accessibility" -> SettingsTarget.ACCESSIBILITY
+                "security" -> SettingsTarget.SECURITY
+                "network", "internet" -> SettingsTarget.NETWORK
+                "dnd", "do not disturb" -> SettingsTarget.DND
                 else -> SettingsTarget.APP_NOTIFICATIONS
             }
             return UltronAction.OpenSystemSettings(target)
@@ -99,6 +124,57 @@ object CommandParser {
         openEn.matchEntire(t)?.let { return UltronAction.OpenApp(it.groupValues[1].trim()) }
         openHi.matchEntire(t)?.let { return UltronAction.OpenApp(it.groupValues[1].trim()) }
 
+        return null
+    }
+
+    private fun toggleTarget(n: String): ToggleTarget = when (n.replace(" ", "")) {
+        "wifi", "wi-fi" -> ToggleTarget.WIFI
+        "hotspot" -> ToggleTarget.HOTSPOT
+        "bluetooth" -> ToggleTarget.BLUETOOTH
+        "airplanemode", "flightmode", "airplane" -> ToggleTarget.AIRPLANE
+        "mobiledata", "data" -> ToggleTarget.MOBILE_DATA
+        "location", "gps" -> ToggleTarget.LOCATION
+        "nfc" -> ToggleTarget.NFC
+        else -> ToggleTarget.TORCH
+    }
+
+    private fun isOn(w: String) = w == "on" || w == "chalu" || w == "shuru" || w == "start" || w == "enable"
+
+    internal fun parseToggle(t: String): UltronAction? {
+        toggleVerbFirst.matchEntire(t)?.let { return UltronAction.SetToggle(toggleTarget(it.groupValues[2]), isOn(it.groupValues[1])) }
+        toggleNameMid.matchEntire(t)?.let { return UltronAction.SetToggle(toggleTarget(it.groupValues[1]), isOn(it.groupValues[2])) }
+        toggleNameFirst.matchEntire(t)?.let { return UltronAction.SetToggle(toggleTarget(it.groupValues[1]), isOn(it.groupValues[2])) }
+        return null
+    }
+
+    private const val DO2 = "(?:\\s+(?:kar|karo|kardo|kar do|kr do|do|de))?"
+    private const val UPW = "(badha\\w*|increase|raise|up|zyada|tez|high|bright|kam|ghata\\w*|decrease|lower|down|low|dheere|dhimi|dim)"
+    private val volWord = Regex("^(?:volume|awaz|awaaz|aawaz|sound)\\s+(?:thoda\\s+|aur\\s+)?$UPW$DO2$")
+    private val volEn = Regex("^(increase|decrease|raise|lower|turn up|turn down)\\s+(?:the\\s+)?volume$")
+    private val briPct = Regex("^(?:set\\s+)?brightness\\s+(?:ko\\s+|to\\s+)?(\\d{1,3})\\s*(?:%|percent|pratishat)?$DO2$")
+    private val briWord = Regex("^brightness\\s+(?:thoda\\s+|aur\\s+)?$UPW$DO2$")
+    private val briMaxMin = Regex("^brightness\\s+(full|max|maximum|min|minimum)$DO2$")
+    private val dnd = Regex("^(?:dnd|do not disturb|disturb mat karo)\\s*(?:mode\\s+)?(on|off|chalu|band|enable|disable|start|stop)$DO2$")
+    private val mPause = Regex("^(?:(?:video|song|gaana|music)\\s+)?pause(?:\\s+(?:video|song|gaana|music))?$DO2$")
+    private val mResume = Regex("^(?:(?:video|song|gaana|music)\\s+)?(?:resume|continue)(?:\\s+(?:video|song|gaana|music))?$DO2$|^(?:video|song|gaana|music)\\s+(?:chalu|play)$DO2$")
+    private val mNext = Regex("^(?:next|agla|agli)(?:\\s+(?:video|song|gaana|track))?(?:\\s+(?:chalao|karo|laga do|lagao))?$")
+    private val mPrev = Regex("^(?:previous|prev|pichla|pichli|peechla|peechli)(?:\\s+(?:video|song|gaana|track))?(?:\\s+(?:chalao|karo|laga do|lagao))?$")
+    private val ytClose = Regex("^(?:youtube|yt)\\s+(?:band|close|stop)$DO2$|^(?:close|band kar|band karo)\\s+(?:youtube|yt)$")
+
+    private fun isUp(w: String) = w.startsWith("badha") || w in setOf("increase", "raise", "up", "zyada", "tez", "high", "bright", "turn up")
+
+    internal fun parseDevice(t: String): UltronAction? {
+        volWord.matchEntire(t)?.let { return UltronAction.AdjustVolume(isUp(it.groupValues[1])) }
+        volEn.matchEntire(t)?.let { return UltronAction.AdjustVolume(isUp(it.groupValues[1])) }
+        briPct.matchEntire(t)?.let { val p = it.groupValues[1].toInt(); return UltronAction.SetBrightness(p) }
+        briWord.matchEntire(t)?.let { return UltronAction.SetBrightness(null, if (isUp(it.groupValues[1])) 20 else -20) }
+        briMaxMin.matchEntire(t)?.let { return UltronAction.SetBrightness(if (it.groupValues[1].startsWith("min")) 1 else 100) }
+        dnd.matchEntire(t)?.let { return UltronAction.SetDnd(isOn(it.groupValues[1])) }
+        if (ytClose.matches(t)) return UltronAction.MediaControl(MediaCmd.CLOSE_YOUTUBE)
+        if (mPause.matches(t)) return UltronAction.MediaControl(MediaCmd.PAUSE)
+        if (mResume.matches(t)) return UltronAction.MediaControl(MediaCmd.PLAY)
+        if (mNext.matches(t)) return UltronAction.MediaControl(MediaCmd.NEXT)
+        if (mPrev.matches(t)) return UltronAction.MediaControl(MediaCmd.PREVIOUS)
         return null
     }
 

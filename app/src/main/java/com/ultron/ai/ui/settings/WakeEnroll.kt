@@ -103,6 +103,6 @@ fun WakeEnrollSection(settings: UltronSettings, update: ((UltronSettings) -> Ult
         }
     }
     SwitchRow("Offline wake word on", "Sleep mein mic khula rehta hai (battery thodi lagti hai) aur wake phrase par ULTRON jaag jaata hai. Recording ke bina kaam nahi karta. Cloud key na ho tab bhi sirf wake chalta hai (kuch upload nahi hota).", settings.wakePersonal) { v -> update { it.copy(wakePersonal = v) } }
-    SwitchRow("Wake-first (armed start)", "On: mic dabate hi ULTRON sirf wake phrase ka intezar karta hai; jab tak 'Hey/Hello/Wake up ULTRON' na bolo kuch bhi upload nahi hota. Off: purana tareeka (seedha sunna shuru).", settings.wakeFirst, enabled = settings.wakePersonal) { v -> update { it.copy(wakeFirst = v) } }
+    SwitchRow("Wake-first (armed start)", "On (default): mic dabate hi ULTRON chupchap background me sirf wake phrase ka intezar karta hai: koi light nahi, kuch upload nahi. 'Hey/Hello/Wake up ULTRON' bolne par light aur ULTRON jaag jaate hain. Off: purana tareeka (seedha sunna shuru). Kaam karne ke liye wake recordings chahiye.", settings.wakeFirst, enabled = settings.wakePersonal) { v -> update { it.copy(wakeFirst = v) } }
     SliderRow("Sensitivity (zyada = jaldi trigger, zyada galat trigger)", settings.wakeSensitivity, 0.6f..1.8f) { v -> update { it.copy(wakeSensitivity = v) } }
 }

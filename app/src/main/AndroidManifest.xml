@@ -15,6 +15,9 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Optional: rotating edge light over other apps while live (user grants it in Settings). -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Brightness and Do-Not-Disturb voice commands. Both are special accesses the USER grants in Android Settings; without them ULTRON only opens the grant screen. -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
     <!--
       No CAMERA permission: Scan uses the system camera app via TakePicture, so the app never

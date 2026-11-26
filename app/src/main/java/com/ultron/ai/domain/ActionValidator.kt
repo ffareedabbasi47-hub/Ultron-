@@ -23,6 +23,12 @@ object ActionValidator {
             else Validation.OK
 
         is UltronAction.OpenSystemSettings -> Validation.OK
+        is UltronAction.SetToggle -> Validation.OK
+        is UltronAction.AdjustVolume -> Validation.OK
+        is UltronAction.SetDnd -> Validation.OK
+        is UltronAction.MediaControl -> Validation.OK
+        is UltronAction.SetBrightness ->
+            if (action.percent != null && action.percent !in 1..100) Validation.no("Brightness 1 se 100 percent ke beech boliye.") else Validation.OK
 
         is UltronAction.SetReminder ->
             if (action.text.isBlank() || action.text.length > 200) Validation.no("Reminder text 1-200 characters ka hona chahiye.")

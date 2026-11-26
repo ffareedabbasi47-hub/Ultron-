@@ -38,3 +38,29 @@ New: domain/wake/WakePhrase.kt, domain/live/EdgeLightMode.kt, domain/live/MicTap
 ## Device checklist still TO DO on a real phone
 Items 1-15 of the brief that need hardware: real one-tap/10-tap behaviour, 3 real-voice phrases, command after wake, TTS self-trigger, music/video,
 app switching, lock/unlock, service survival, overlay over YouTube/games, permission revoke, airplane-mode wake, AI chat/avatar regression.
+
+---
+## Update 2 (user feedback round)
+
+1. **Mic dabane ke baad light nahi**: armed/SLEEP state = `EdgeMode.OFF` (system overlay + in-app light). Light + ULTRON sirf wake word hit hone par (wake flash, phir normal modes). "Wake-first" default ON; iske liye user ki wake recordings (min 3 per phrase) chahiye, warna purana LISTENING behaviour (light ke saath) chalta hai. Mic phir bhi Android ke recording indicator (green dot) ke saath hi chalta hai: hidden mic nahi.
+2. **3D models**: root cause `AvatarView.Bridge` me constructor lambda `onEvent` ka member function `onEvent` se shadow hona (infinite self-call, avatar ready event kabhi nahi pahunchta). Fix: lambda ka naam `deliverEvent`. Device par verify nahi hua.
+3. **Phone switches** (`UltronAction.SetToggle`): Wi-Fi, hotspot, Bluetooth, airplane, mobile data, location, NFC = Settings screen/panel kholta hai, phir user-enabled Accessibility service se switch dabata hai aur state dobara padhke confirm karta hai. Torch = seedha CameraManager (koi permission/accessibility nahi). Airplane ON se pehle haan/nahi confirmation. Limits: Android 10+ par koi app ye switches seedha flip nahi kar sakta; Accessibility off ho to sirf screen khulti hai; OEM layout alag ho to "switch nahi mila" bolta hai; background se activity launch block ho to notification-tap route. Hotspot/mobile data me "single switch" guess band hai (galat switch na dabe).
+   Extra settings screens: hotspot, airplane, data, location, battery, apps, storage, NFC, date, language, accessibility, security, network, DND. Voice-call tool `phone_toggle` bhi add.
+4. **YouTube play**: query ka YouTube search page fetch karke pehla `videoId` nikalta hai aur `watch?v=` link kholta hai (app autoplay karta hai). Na mile to results page + clear message. Page structure badle to fallback chalega. Playback shuru hua ya nahi verify nahi hota.
+
+Tests: pure logic 79 + 14 (parser/toggle/YouTube) pass. Android code compile/run nahi hua (sandbox me SDK nahi): pehle build karke test karo.
+
+---
+## Update 3 (Master Task, round 1)
+
+**Audit (partial, honest):** GLB integrity ok for both models (header/length, buffers, embedded JPEG textures, no external refs). Mic pipeline: single AudioRecord, armed SLEEP keeps mic running when wake recordings exist (no stop/start per command). Echo: TtsEchoGate strict mode on wake path. Not yet reviewed: AssistantEngine, TurnController, full Manifest/dependency/lint audit. No bug was *reproduced* on a device (no device/SDK here).
+
+**New actions** (typed, validated, parsed offline):
+- `AdjustVolume` — AudioManager.adjustStreamVolume(MUSIC), verified by reading the volume back. Ringtone volume untouched.
+- `SetBrightness` — needs WRITE_SETTINGS (user grants via Settings screen; ULTRON opens it). Value read back after writing. Turns auto-brightness off.
+- `SetDnd` — needs notification-policy access (user grants). State read back from NotificationManager.
+- `MediaControl` PAUSE/PLAY/NEXT/PREVIOUS/CLOSE_YOUTUBE — public media-key dispatch. Pause/play verified with AudioManager.isMusicActive. NEXT/PREVIOUS cannot be verified (Android does not report track change) and the reply says so. "YouTube band karo" = pause + Home; an app cannot kill another app.
+- YouTube play: after opening the video waits 5 s and checks isMusicActive; reports playing only if audio became active, and says so when it cannot tell (audio already playing before / nothing detected).
+
+Manifest: added WRITE_SETTINGS, ACCESS_NOTIFICATION_POLICY (both user-granted special accesses).
+Tests: parser/validator 20 pass + 79 domain/wake/live pass. Android-side code compiled/run on device: NO.

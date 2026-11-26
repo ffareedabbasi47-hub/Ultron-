@@ -8,6 +8,7 @@ import com.ultron.ai.domain.NavKind
 import com.ultron.ai.domain.ScreenControl
 import com.ultron.ai.domain.ScreenNode
 import com.ultron.ai.domain.ScreenSnapshot
+import com.ultron.ai.domain.SwitchResult
 
 /**
  * Optional. Works only after the user turns it on in Android Settings > Accessibility. It acts only when ULTRON
@@ -84,6 +85,47 @@ class UltronAccessibilityService : AccessibilityService() {
         return best?.let { clickWithParents(it) } ?: false
     }
 
+    /**
+     * Switch finder for Settings screens/panels. A switch row is [title text] + [Switch]; the switch usually has no text of
+     * its own, so we locate the title, climb to its row and look for a checkable node there. If the window has exactly one
+     * switch (Wi-Fi / Internet panels) that one is used. Never touches the password/installer screens.
+     */
+    internal fun setSwitchState(hints: List<String>, on: Boolean, allowSingle: Boolean): SwitchResult {
+        val root = rootInActiveWindow ?: return SwitchResult.NOT_FOUND
+        val pkg = root.packageName?.toString().orEmpty()
+        if (pkg == packageName || com.ultron.ai.domain.RiskPolicy.packageBlocked(pkg)) return SwitchResult.NOT_FOUND
+        val switches = ArrayList<AccessibilityNodeInfo>()
+        fun collect(n: AccessibilityNodeInfo?, d: Int) {
+            if (n == null || d > 30) return
+            if (n.isCheckable && n.isVisibleToUser) switches += n
+            for (i in 0 until n.childCount) collect(n.getChild(i), d + 1)
+        }
+        collect(root, 0)
+        fun rowText(n: AccessibilityNodeInfo): String {
+            val sb = StringBuilder()
+            var cur: AccessibilityNodeInfo? = n; var up = 0
+            while (cur != null && up < 4) {
+                fun txt(x: AccessibilityNodeInfo?, d: Int) {
+                    if (x == null || d > 4) return
+                    x.text?.let { sb.append(it).append(' ') }
+                    x.contentDescription?.let { sb.append(it).append(' ') }
+                    for (i in 0 until x.childCount) txt(x.getChild(i), d + 1)
+                }
+                txt(cur, 0)
+                if (sb.isNotBlank()) break
+                cur = cur.parent; up++
+            }
+            return sb.toString().lowercase()
+        }
+        val byHint = switches.filter { sw -> val t = rowText(sw); hints.any { t.contains(it) } }
+        val target = byHint.firstOrNull() ?: (if (allowSingle) switches.singleOrNull() else null) ?: return SwitchResult.NOT_FOUND
+        if (target.isChecked == on) return SwitchResult.ALREADY
+        if (!clickWithParents(target)) return SwitchResult.FAILED
+        Thread.sleep(500)
+        target.refresh()
+        return if (target.isChecked == on) SwitchResult.CHANGED else SwitchResult.FAILED
+    }
+
     internal fun type(text: String): Boolean {
         val root = rootInActiveWindow ?: return false
         val target = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable && !it.isPassword }
@@ -132,4 +174,5 @@ class AccessibilityScreenControl : ScreenControl {
     override fun typeText(text: String) = s?.type(text) ?: false
     override fun scroll(down: Boolean) = s?.scrollScreen(down) ?: false
     override fun navigate(kind: NavKind) = s?.nav(kind) ?: false
+    override fun setSwitch(hints: List<String>, on: Boolean, allowSingle: Boolean): SwitchResult = s?.setSwitchState(hints, on, allowSingle) ?: SwitchResult.FAILED
 }

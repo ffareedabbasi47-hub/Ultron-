@@ -236,7 +236,8 @@ fun AppRoot(settings: UltronSettings) {
     // When the system-wide light is on screen it already covers this app too: drawing the in-app ring as well would double it.
     val systemLightShowing by com.ultron.ai.platform.live.OverlayLight.showing.collectAsState()
     if (settings.edgeLight) com.ultron.ai.ui.components.LiveEdgeLight(
-        active = liveOn && !systemLightShowing,
+        // No light while armed for the wake word (SLEEP); it appears only once ULTRON is awake.
+        active = liveOn && liveState != com.ultron.ai.domain.live.LiveState.SLEEP && !systemLightShowing,
         intense = liveState == com.ultron.ai.domain.live.LiveState.SPEAKING || liveState == com.ultron.ai.domain.live.LiveState.USER_SPEECH,
         reducedMotion = settings.reducedMotion,
     )

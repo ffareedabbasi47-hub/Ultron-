@@ -96,7 +96,7 @@ data class UltronSettings(
     val wakePersonal: Boolean = true,
     val wakeSensitivity: Float = 1f,
     /** Start armed: the mic only feeds the offline wake matcher until a wake phrase is heard (nothing is uploaded before). */
-    val wakeFirst: Boolean = false,
+    val wakeFirst: Boolean = true,
     /** Rotating light around the app edge while live. */
     val edgeLight: Boolean = true,
     /** The same light over other apps (needs "display over other apps" permission). */

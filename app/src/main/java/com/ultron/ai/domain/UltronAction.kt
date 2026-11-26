@@ -3,7 +3,15 @@ package com.ultron.ai.domain
 /** Typed actions. The AI/parser may PROPOSE one; execution always passes ActionValidator first. */
 sealed interface UltronAction {
     data class OpenApp(val appName: String) : UltronAction
+    /** Searches YouTube and PLAYS the first matching video (falls back to the results page, and says so). */
     data class YouTubeSearch(val query: String) : UltronAction
+    /** Turn a phone switch on/off (Wi-Fi, hotspot, Bluetooth...). Needs the Accessibility service except for the torch. */
+    data class AdjustVolume(val up: Boolean) : UltronAction
+    /** [percent] = absolute 1..100, or null with [delta] (+/- percentage points). */
+    data class SetBrightness(val percent: Int?, val delta: Int = 0) : UltronAction
+    data class SetDnd(val on: Boolean) : UltronAction
+    data class MediaControl(val cmd: MediaCmd) : UltronAction
+    data class SetToggle(val target: ToggleTarget, val on: Boolean) : UltronAction
     data class OpenSystemSettings(val target: SettingsTarget) : UltronAction
     data class SetReminder(val text: String, val delayMinutes: Int) : UltronAction
     data class Remember(val text: String) : UltronAction
@@ -23,7 +31,14 @@ sealed interface UltronAction {
 
 enum class NavKind { BACK, HOME, RECENTS, NOTIFICATIONS }
 
-enum class SettingsTarget { MAIN, WIFI, BLUETOOTH, DISPLAY, SOUND, APP_NOTIFICATIONS }
+enum class SettingsTarget {
+    MAIN, WIFI, BLUETOOTH, DISPLAY, SOUND, APP_NOTIFICATIONS,
+    HOTSPOT, AIRPLANE, MOBILE_DATA, LOCATION, BATTERY, APPS, STORAGE, NFC, DATE, LANGUAGE, ACCESSIBILITY, SECURITY, NETWORK, DND
+}
+
+enum class MediaCmd { PLAY, PAUSE, NEXT, PREVIOUS, CLOSE_YOUTUBE }
+
+enum class ToggleTarget { WIFI, HOTSPOT, BLUETOOTH, AIRPLANE, MOBILE_DATA, LOCATION, NFC, TORCH }
 
 /**
  * Consequential actions (calls, messages, purchases, deletions) are NOT implemented in this

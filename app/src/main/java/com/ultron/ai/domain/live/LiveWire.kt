@@ -95,7 +95,8 @@ object LiveWire {
                 add(buildJsonObject {
                     putJsonArray("functionDeclarations") {
                         add(tool("open_app", "Open an installed Android app by its name (e.g. YouTube, WhatsApp, Chrome, Camera).", "name" to "App name"))
-                        add(tool("youtube_search", "Open a YouTube search for songs or videos.", "query" to "Search text"))
+                        add(tool("youtube_search", "Search YouTube and PLAY the first matching video (song, trailer, any video).", "query" to "Search text"))
+                        add(tool("phone_toggle", "Turn a phone switch on or off: wifi, hotspot, bluetooth, airplane, mobile_data, location, nfc or torch.", "name" to "wifi|hotspot|bluetooth|airplane|mobile_data|location|nfc|torch", "state" to "on or off"))
                         add(tool("set_reminder", "Set a reminder after some minutes.", "text" to "What to remind", "minutes" to "Delay in minutes as a number"))
                         add(tool("build_project", "Hand a coding job (website, web page, small app) to the background builder agent. Use when the user asks you to build or code something. Pass a clear one-sentence brief.", "brief" to "What to build, with key requirements"))
                         add(tool("stop_listening", "End the voice call when the user says goodbye or asks you to stop."))

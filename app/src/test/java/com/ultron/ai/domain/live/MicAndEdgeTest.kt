@@ -53,7 +53,7 @@ class MicAndEdgeTest {
         assertEquals(EdgeMode.USER_SPEECH, EdgeModes.of(LiveState.USER_SPEECH, true))
         assertEquals(EdgeMode.THINKING, EdgeModes.of(LiveState.THINKING, true))
         assertEquals(EdgeMode.SPEAKING, EdgeModes.of(LiveState.SPEAKING, true))
-        assertEquals(EdgeMode.IDLE, EdgeModes.of(LiveState.SLEEP, true))
+        assertEquals("armed/sleep must show no light", EdgeMode.OFF, EdgeModes.of(LiveState.SLEEP, true))
     }
     @Test fun noLightWhenMicIsReallyOff() {
         assertEquals(EdgeMode.OFF, EdgeModes.of(LiveState.SLEEP, false))
@@ -61,10 +61,10 @@ class MicAndEdgeTest {
             assertEquals(s.name, EdgeMode.OFF, EdgeModes.of(s, true))
     }
     @Test fun statesLookDifferentAndIdleIsCheapest() {
-        val modes = listOf(EdgeMode.IDLE, EdgeMode.LISTENING, EdgeMode.USER_SPEECH, EdgeMode.THINKING, EdgeMode.SPEAKING, EdgeMode.WAKE)
+        val modes = listOf(EdgeMode.LISTENING, EdgeMode.USER_SPEECH, EdgeMode.THINKING, EdgeMode.SPEAKING, EdgeMode.WAKE)
         assertEquals(modes.size, modes.map { Triple(it.periodMs, it.widthDp, it.pulse) }.toSet().size)
-        assertTrue(EdgeMode.IDLE.intensity < EdgeMode.LISTENING.intensity)
-        assertTrue(EdgeMode.IDLE.fps <= EdgeMode.LISTENING.fps)
+        assertTrue(EdgeMode.LISTENING.intensity < EdgeMode.SPEAKING.intensity)
+        assertTrue(EdgeMode.LISTENING.fps <= EdgeMode.SPEAKING.fps)
         assertTrue(EdgeMode.THINKING.pulse && !EdgeMode.SPEAKING.pulse)
         assertTrue(EdgeMode.SPEAKING.periodMs < EdgeMode.LISTENING.periodMs)
     }

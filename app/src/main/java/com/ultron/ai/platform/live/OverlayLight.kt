@@ -43,6 +43,7 @@ class OverlayLight(private val context: Context) {
     private var attachedType = 0
     private var view: GlowView? = null
     private var reduced = false
+    private var flashAt = 0L
 
     companion object {
         private val _showing = MutableStateFlow(false)
@@ -89,12 +90,14 @@ class OverlayLight(private val context: Context) {
             view = gv; wm = target; attachedType = type; current = this
             gv.setReduced(reduced)
             _showing.value = true
+            // The wake event can arrive a moment BEFORE the window exists (the light is created by the same wake): still flash.
+            if (SystemClock.uptimeMillis() - flashAt < 800L) gv.flash()
         }
         view?.setMode(mode)
     }
 
     /** Short activation burst after a wake word (returns to the real mode by itself). */
-    fun flash() { view?.flash() }
+    fun flash() { flashAt = SystemClock.uptimeMillis(); view?.flash() }
 
     fun hide() {
         view?.let { v -> v.stopAnim(); try { wm.removeView(v) } catch (_: Exception) {} }
