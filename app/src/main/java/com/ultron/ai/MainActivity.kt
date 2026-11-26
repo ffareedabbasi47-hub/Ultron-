@@ -1,0 +1,101 @@
+package com.ultron.ai
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import com.ultron.ai.data.settings.UltronSettings
+import com.ultron.ai.ui.AppRoot
+import com.ultron.ai.ui.LocalContainer
+import com.ultron.ai.ui.theme.UiPrefs
+import com.ultron.ai.ui.theme.UltronTheme
+
+class MainActivity : ComponentActivity() {
+    private val container get() = (application as UltronApp).container
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        handleLaunchIntent(intent)
+        val c = container
+        setContent {
+            // null until DataStore has really loaded, so TTS starts with the saved engine/voice.
+            val loaded by c.settings.settings.collectAsState(initial = null)
+            val s: UltronSettings = loaded ?: UltronSettings()
+
+            if (loaded != null) {
+                // (Re)create the TTS engine only when the chosen engine changes.
+                LaunchedEffect(s.ttsEngine) { c.tts.initialize(s) }
+                // Re-apply saved voice/rate/pitch/language whenever they change or the engine becomes ready.
+                val ttsReady = c.tts.state.collectAsState().value.ready
+                LaunchedEffect(ttsReady, s.ttsVoice, s.ttsRate, s.ttsPitch, s.ttsVolume, s.language) {
+                    if (ttsReady) c.tts.applySettings(s)
+                }
+            }
+
+            // Private by default: no screenshots / recents thumbnail of chats, journal or the API key screen.
+            LaunchedEffect(s.secureScreen) {
+                if (s.secureScreen) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            }
+            val prefs = remember(s.reducedMotion, s.lowPerformance) { UiPrefs(s.reducedMotion, s.lowPerformance) }
+            CompositionLocalProvider(LocalContainer provides c) {
+                UltronTheme(s.theme, prefs, s.font, s.textScale) {
+                    if (loaded != null) AppRoot(s)
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleLaunchIntent(intent)
+    }
+
+    private fun handleLaunchIntent(intent: android.content.Intent?) {
+        when (intent?.action) {
+            ACTION_LIVE_START, android.content.Intent.ACTION_ASSIST, android.content.Intent.ACTION_VOICE_COMMAND -> {
+                // Exported entry point: another app can send these. Only our own assistant session (which knows the
+                // per-process token) may start the microphone; anything else just opens the app.
+                val ok = com.ultron.ai.domain.LaunchPolicy.autoStartAllowed(intent.getStringExtra(EXTRA_TOKEN), launchToken)
+                if (ok) container.liveStartRequest.value = true
+                else container.diagnostics.log("live", "external ${intent.action} opened the app only (mic needs a tap)")
+                intent.removeExtra(EXTRA_TOKEN)
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        com.ultron.ai.platform.actions.AppVisibility.visible = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        com.ultron.ai.platform.actions.AppVisibility.visible = false
+        // The old one-shot recognizer never outlives the screen. A LIVE session is different: it is owned by
+        // its foreground service (visible notification, Stop button), so it and its replies keep going.
+        container.stt.cancel()
+        if (container.live.state.value == com.ultron.ai.domain.live.LiveState.STOPPED) container.tts.stop()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isFinishing) {
+            container.stt.release()
+            if (container.live.state.value == com.ultron.ai.domain.live.LiveState.STOPPED) container.tts.shutdown()
+        }
+    }
+
+    companion object {
+        const val ACTION_LIVE_START = "com.ultron.ai.LIVE_START"
+        const val EXTRA_TOKEN = "com.ultron.ai.extra.LAUNCH_TOKEN"
+        /** Secret that lives only in this process's memory; UltronSession attaches it to its own launch intent. */
+        val launchToken: String = com.ultron.ai.domain.LaunchPolicy.newToken()
+    }
+}

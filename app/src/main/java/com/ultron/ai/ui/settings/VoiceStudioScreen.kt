@@ -1,0 +1,204 @@
+package com.ultron.ai.ui.settings
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import com.ultron.ai.data.settings.UltronSettings
+import com.ultron.ai.platform.voice.VoiceInfo
+import com.ultron.ai.platform.voice.VoiceRanker
+import com.ultron.ai.ui.LocalContainer
+import com.ultron.ai.ui.components.GlassCard
+import com.ultron.ai.ui.components.LabeledField
+import com.ultron.ai.ui.components.ScreenHeader
+import com.ultron.ai.ui.components.SectionLabel
+import com.ultron.ai.ui.components.StatusPill
+import com.ultron.ai.ui.theme.UltronColors
+import kotlinx.coroutines.launch
+
+private const val SAMPLE = "Main sun raha hoon. Soch samajh kar bolna, kyunki main kuch bhi bhoolta nahi."
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun VoiceStudioScreen(settings: UltronSettings, onBack: () -> Unit) {
+    val c = LocalContainer.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val tts by c.tts.state.collectAsState()
+    val micOk = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    fun update(block: (UltronSettings) -> UltronSettings) = scope.launch { c.settings.update(block) }
+    fun preview(s: UltronSettings) {
+        c.tts.applySettings(s) // use exactly the values on screen, then speak
+        c.tts.preview(SAMPLE)
+    }
+
+    Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+        ScreenHeader("Awaaz Studio", onBack)
+
+        GlassCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    when {
+                        tts.initializing -> StatusPill("Engine start ho raha hai", UltronColors.Gold)
+                        tts.ready -> StatusPill("Engine ready", UltronColors.Green)
+                        else -> StatusPill("Engine available nahi", UltronColors.Red)
+                    }
+                }
+                Text("Engine: ${tts.engine ?: "—"}", style = MaterialTheme.typography.bodyMedium)
+                Text("Active voice: ${tts.activeVoice ?: "engine default"}", style = MaterialTheme.typography.bodyMedium)
+                tts.warning?.let { Text(it, color = UltronColors.Gold, style = MaterialTheme.typography.bodyMedium) }
+                tts.error?.let { Text(it, color = UltronColors.Red, style = MaterialTheme.typography.bodyMedium) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(enabled = tts.ready, onClick = { preview(settings) }) { Text("Test voice") }
+                    OutlinedButton(onClick = { c.tts.stop() }) { Text("Stop") }
+                }
+            }
+        }
+
+        SectionLabel("Online awaaz (Gemini) — sabse natural")
+        val cloudErr by c.cloudVoice.lastError.collectAsState()
+        val hasKey = remember(settings) { c.settings.geminiKey() != null }
+        SwitchRow("Online awaaz use karo", if (!hasKey) "Gemini API key chahiye (Menu → AI Brain)." else if (!settings.cloudConsent) "Cloud AI permission chahiye (Privacy)." else "Jawab ka text Google ko bheja jata hai awaaz banane ke liye. Internet chahiye; fail hone par device voice bolti hai.", settings.cloudVoice) { v -> update { it.copy(cloudVoice = v) } }
+        val calls by c.cloudVoice.cloudCalls.collectAsState()
+        Text("Gemini awaaz ki free limit bahut chhoti hoti hai (har jawab = 1 request). Isliye ye default OFF hai; phone ki awaaz free hai aur lip-sync ke saath chalti hai. Is session mein online awaaz ke requests: $calls", color = UltronColors.TextLo, style = MaterialTheme.typography.bodyMedium)
+        SwitchRow("Lip-sync (avatar ke hoth awaaz ke saath)", "Phone ki awaaz bhi ULTRON ke apne player se chalti hai taaki hoth asli audio ke saath hilen. Off = seedha device TTS (hoth sync nahi).", settings.lipSyncVoice) { v -> update { it.copy(lipSyncVoice = v) } }
+        fun previewCloud(name: String? = null) = scope.launch {
+            if (name != null) c.settings.update { it.copy(cloudVoiceName = name) }
+            kotlinx.coroutines.delay(350) // let the saved choice reach the voice engine
+            c.tts.preview(SAMPLE)
+        }
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.ultron.ai.data.ai.GeminiWire.CLOUD_VOICES.forEach { (n, d) ->
+                FilterChip(selected = settings.cloudVoiceName == n, onClick = { previewCloud(n) }, label = { Text("$n · $d") })
+            }
+        }
+        LabeledField(settings.cloudTtsModel, { v -> update { it.copy(cloudTtsModel = v.trim()) } }, "Online voice model")
+        Text("Model ka naam Google badalta rehta hai. 'model nahi mila' aaye to AI Studio ki docs se naya TTS model naam yahan daalo.", style = MaterialTheme.typography.bodyMedium, color = UltronColors.TextLo)
+        cloudErr?.let { Text(it, color = UltronColors.Gold, style = MaterialTheme.typography.bodyMedium) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { previewCloud() }) { Text("Online voice test") }
+            OutlinedButton(onClick = { c.tts.stop() }) { Text("Stop") }
+        }
+        Text("Ye kisi film actor ki awaaz nahi hai: Google ki ek built-in voice, ek gehre, shaant, khatarnak andaaz mein bolne ke nirdesh ke saath.", style = MaterialTheme.typography.bodyMedium, color = UltronColors.TextLo)
+
+        SectionLabel("Offline effect (optional)")
+        SwitchRow("Ultron awaaz (gehri, dhaatu-jaisi)", "Phone ki awaaz par offline effect: bhaari body, halki gunj aur metallic resonance. Ye original effect hai, kisi film actor ki awaaz nahi.", settings.voiceFx) { v -> update { it.copy(voiceFx = v) } }
+        SwitchRow("Saans lene ki awaaz", "Vaakyon ke beech halki saans (inhale/exhale), sab offline banti hai.", settings.voiceBreath) { v -> update { it.copy(voiceBreath = v) } }
+
+        SectionLabel("Speed / pitch / volume")
+        SliderRow("Speed", settings.ttsRate, 0.5f..1.5f) { v -> update { it.copy(ttsRate = v) } }
+        SliderRow("Pitch (kam = gehri awaaz)", settings.ttsPitch, 0.5f..1.5f) { v -> update { it.copy(ttsPitch = v) } }
+        SliderRow("Volume", settings.ttsVolume, 0.2f..1f) { v -> update { it.copy(ttsVolume = v) } }
+        Text("Presets", style = MaterialTheme.typography.labelSmall, color = UltronColors.TextLo, modifier = Modifier.padding(top = 6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(Triple("Ultron (khatarnak)", 0.86f, 0.62f), Triple("Gehri shaant", 0.92f, 0.78f), Triple("Normal", 1.0f, 1.0f)).forEach { (label, rate, pitch) ->
+                OutlinedButton(onClick = {
+                    update { it.copy(ttsRate = rate, ttsPitch = pitch) }
+                    preview(settings.copy(ttsRate = rate, ttsPitch = pitch))
+                }) { Text(label, maxLines = 1) }
+            }
+        }
+        Text(
+            "Preset sirf speed/pitch badalta hai. Awaaz kitni natural lagegi wo voice par depend karti hai — neeche sirf offline voices dikhti hain; Ultron awaaz effect upar ke switch se hai. Ye kisi film character ki awaaz nahi hai.",
+            style = MaterialTheme.typography.bodyMedium, color = UltronColors.TextLo, modifier = Modifier.padding(top = 6.dp),
+        )
+        SwitchRow("Jawab bolkar sunao", "Chat aur Live dono mein ULTRON ke jawab bole jayenge.", settings.speakReplies) { v -> update { it.copy(speakReplies = v) } }
+
+        SectionLabel("TTS engine")
+        if (tts.engines.isEmpty()) Text("Koi TTS engine detect nahi hua.", color = UltronColors.TextLo)
+        tts.engines.forEach { e ->
+            val selected = (settings.ttsEngine ?: tts.engine) == e.packageName
+            Row(Modifier.fillMaxWidth().clickable { update { it.copy(ttsEngine = e.packageName, ttsVoice = null) } }, verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(selected = selected, onClick = { update { it.copy(ttsEngine = e.packageName, ttsVoice = null) } })
+                Column { Text(e.label); Text(e.packageName, style = MaterialTheme.typography.labelSmall, color = UltronColors.TextLo) }
+            }
+        }
+        TextButton(onClick = {
+            try { context.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            catch (_: Exception) { /* settings page not exposed on this device */ }
+        }) { Text("Android TTS settings / voice data install") }
+
+        val shown = remember(tts.voices, settings.language) { VoiceRanker.shortlist(tts.voices, settings.language.speechTag) }
+        SectionLabel("Phone ki voices (${shown.size})")
+        if (shown.isEmpty()) Text("Koi achchi voice nahi mili. Android TTS settings mein Google voice data install karo, phir wapas aao.", color = UltronColors.TextLo, modifier = Modifier.padding(top = 8.dp))
+        else Text("Online voices zyada natural hoti hain par internet chahiye; offline wali bina internet chalti hain.", color = UltronColors.TextLo, style = MaterialTheme.typography.bodyMedium)
+        shown.forEach { v -> VoiceRow(v, selected = (settings.ttsVoice ?: tts.activeVoice) == v.name, onPick = {
+            update { it.copy(ttsVoice = v.name) }
+            preview(settings.copy(ttsVoice = v.name))
+        }) }
+        if (settings.ttsVoice != null && tts.voices.isNotEmpty() && tts.voices.none { it.name == settings.ttsVoice }) {
+            Text("Aapki saved voice \"${settings.ttsVoice}\" abhi device par nahi mil rahi. Selection hata nahi hai; voice pack wapas install karoge to wahi use hogi.", color = UltronColors.Gold, modifier = Modifier.padding(top = 8.dp))
+        }
+
+        SectionLabel("Mic aur wake word")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Microphone permission", Modifier.weight(1f))
+            if (micOk) StatusPill("Allowed", UltronColors.Green) else StatusPill("Mic dabane par poochhi jayegi", UltronColors.Gold)
+        }
+        Text("Speech recognition: ${if (c.stt.isAvailable()) "device recognizer available (network ki zaroorat device par depend karti hai)" else "available nahi"}", style = MaterialTheme.typography.bodyMedium, color = UltronColors.TextLo, modifier = Modifier.padding(top = 6.dp))
+        GlassCard(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+            Column(Modifier.padding(14.dp)) {
+                StatusPill("Live: mic ek baar khulta hai", UltronColors.Cyan)
+                Text(
+                    "Mic button ab Live session shuru karta hai (ek persistent mic, notification mein Stop). 'Hey Ultron' ke liye asli low-power wake-word engine is build mein nahi hai; Menu → Live aur Assistant mein sleep ke dauran cloud check ka opt-in option hai. Sleep timer, echo aur permissions wahin hain.",
+                    style = MaterialTheme.typography.bodyMedium, color = UltronColors.TextLo, modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        }
+        androidx.compose.foundation.layout.Spacer(Modifier.padding(16.dp))
+    }
+}
+
+@Composable
+private fun VoiceRow(v: VoiceInfo, selected: Boolean, onPick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onPick).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        RadioButton(selected = selected, onClick = onPick)
+        Column(Modifier.weight(1f)) {
+            Text(v.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+            val tags = buildList {
+                add(v.localeTag)
+                add("quality ${qualityLabel(v.quality)}")
+                add(if (v.needsNetwork) "internet chahiye" else "offline")
+                if (!v.installed) add("voice data install nahi")
+            }
+            Text(tags.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = if (v.installed) UltronColors.TextLo else UltronColors.Gold)
+        }
+    }
+}
+
+private fun qualityLabel(q: Int) = when {
+    q >= 500 -> "very high"
+    q >= 400 -> "high"
+    q >= 300 -> "normal"
+    q >= 200 -> "low"
+    else -> "very low"
+}

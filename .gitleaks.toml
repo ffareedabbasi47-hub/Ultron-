@@ -1,0 +1,11 @@
+title = "ULTRON gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake placeholder keys used only by unit tests (they verify that real-looking keys get redacted). The backend/ path stays listed because the removed backend test is still present in Git history, which gitleaks also scans."
+paths = [
+  '''backend/test/server\.test\.js''',
+  '''app/src/test/java/com/ultron/ai/core/RedactorAndValidatorTest\.kt''',
+]
