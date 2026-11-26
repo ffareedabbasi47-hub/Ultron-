@@ -41,6 +41,7 @@ object CommandParser {
     private val youtubeVerbs = "(?:chalao|chala|play|search|dikhao|dikha|laga|lagao|dhundo|dhoondo|khol|kholo|open)"
     private val youtubeFirst = Regex("^(?:youtube|yt)\\s+(?:pe|par|per|on)\\s+(.+?)(?:\\s+$youtubeVerbs)?$")
     private val youtubeLast = Regex("^(.+?)\\s+(?:youtube|yt)\\s+(?:pe|par|per|me|mein|on)(?:\\s+$youtubeVerbs)?$")
+    private val ytPlayTopic = Regex("^(?:mujhe\\s+)?(.+?)\\s+(?:video\\s+)?(?:chalao|chala do|chala de|play karo|play kar do|laga do|lagao)$")
     private val playQuery = Regex("^(?:play|chalao|chala do|gaana|gana)\\s+(.+)$")
 
     private val openEn = Regex("^(?:open|launch|start)\\s+(.+)$")
@@ -76,6 +77,7 @@ object CommandParser {
         clickEn.matchEntire(t)?.let { return UltronAction.Click(it.groupValues[1].trim()) }
         clickHi.matchEntire(t)?.let { m -> return UltronAction.Click((m.groupValues[1].ifEmpty { m.groupValues[2] }).trim()) }
 
+        parseCall(t)?.let { return it }
         parseToggle(t)?.let { return it }
         parseDevice(t)?.let { return it }
 
@@ -117,6 +119,11 @@ object CommandParser {
         youtubeFirst.matchEntire(t)?.let { return UltronAction.YouTubeSearch(it.groupValues[1].trim()) }
         youtubeLast.matchEntire(t)?.let { return UltronAction.YouTubeSearch(it.groupValues[1].trim()) }
         playQuery.matchEntire(t)?.let { return UltronAction.YouTubeSearch(it.groupValues[1].trim()) }
+
+        ytPlayTopic.matchEntire(t)?.let { m ->
+            val q = m.groupValues[1].trim()
+            if (q.isNotEmpty() && q !in setOf("wifi", "wi-fi", "hotspot", "bluetooth", "torch", "flashlight", "data", "location")) return UltronAction.YouTubeSearch(q)
+        }
 
         builderCmd.matchEntire(t)?.let { return UltronAction.BuildProject(it.groupValues[1].trim()) }
         builderSite.matchEntire(t)?.let { return UltronAction.BuildProject(it.groupValues[1].trim() + " " + it.groupValues[2]) }
@@ -160,6 +167,24 @@ object CommandParser {
     private val mNext = Regex("^(?:next|agla|agli)(?:\\s+(?:video|song|gaana|track))?(?:\\s+(?:chalao|karo|laga do|lagao))?$")
     private val mPrev = Regex("^(?:previous|prev|pichla|pichli|peechla|peechli)(?:\\s+(?:video|song|gaana|track))?(?:\\s+(?:chalao|karo|laga do|lagao))?$")
     private val ytClose = Regex("^(?:youtube|yt)\\s+(?:band|close|stop)$DO2$|^(?:close|band kar|band karo)\\s+(?:youtube|yt)$")
+
+    private const val NUM = "([+\\d][\\d\\s-]{4,18})"
+    private val callEnd = Regex("^(?:call\\s+(?:cancel|end|kaat|kat|band)(?:\\s+(?:karo|kar do|do))?|(?:call|phone)\\s+(?:cut|kaat)\\s*(?:karo|kar do|do)?|hang up|call kaat do)$")
+    private val dialer = Regex("^(?:dialer|phone app|dial pad|dialpad)(?:\\s+(?:kholo|khol|open|open karo|dikhao))?$|^open\\s+(?:the\\s+)?dialer$")
+    private val callNumA = Regex("^(?:(?:is\\s+)?number\\s+(?:par|pe)\\s+)?call\\s*(?:kar|karo|kardo|kar do)?\\s*$NUM$")
+    private val callNumB = Regex("^$NUM\\s+(?:par|pe|ko)\\s+(?:call|phone)\\s*(?:kar|karo|kardo|kar do)?$")
+    private val callKarFirst = Regex("^(?:call|phone)\\s+(?:kar|karo|kardo|kar do)\\s+(.+?)(?:\\s+ko)?$")
+    private val callKo = Regex("^(.+?)\\s+ko\\s+(?:phone|call|fone)\\s*(?:kar|karo|kardo|kar do|laga|lagao|laga do|lagana)?$")
+    private val callEn = Regex("^(?:call|phone|ring)\\s+(.+)$")
+
+    internal fun parseCall(t: String): UltronAction? {
+        if (callEnd.matches(t)) return UltronAction.EndCall
+        if (dialer.matches(t)) return UltronAction.OpenDialer
+        (callNumA.matchEntire(t) ?: callNumB.matchEntire(t))?.let { m -> ContactMatcher.normalizeNumber(m.groupValues[1])?.let { return UltronAction.CallNumber(it) } }
+        val name = (callKarFirst.matchEntire(t) ?: callKo.matchEntire(t) ?: callEn.matchEntire(t))?.groupValues?.get(1)?.trim() ?: return null
+        if (name.isEmpty() || name in setOf("karo", "kar", "me", "mujhe")) return null
+        return UltronAction.CallContact(name)
+    }
 
     private fun isUp(w: String) = w.startsWith("badha") || w in setOf("increase", "raise", "up", "zyada", "tez", "high", "bright", "turn up")
 

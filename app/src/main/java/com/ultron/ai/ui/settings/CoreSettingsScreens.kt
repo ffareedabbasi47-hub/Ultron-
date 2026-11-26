@@ -278,7 +278,7 @@ fun PrivacyScreen(settings: UltronSettings, onBack: () -> Unit) {
         PermRow("Notifications", if (n) "Allowed" else "Blocked", if (n) UltronColors.Green else UltronColors.Gold, "Sirf aapke set kiye reminders ke liye.")
         PermRow("Camera", "App ke paas nahi", UltronColors.TextLo, "Scan system camera app use karta hai; ULTRON camera access nahi rakhta.")
         PermRow("Location", "Use nahi hoti", UltronColors.TextLo, "Mausam ke liye shehar aap khud likhte ho.")
-        PermRow("Screen capture (MediaProjection)", "Is build mein nahi", UltronColors.TextLo, "ULTRON screen ki video/screenshot capture ya upload nahi karta.")
+        PermRow("Screenshot / screen recording", "Sirf aapke tap par", UltronColors.TextLo, "Neeche ke buttons se hi shuru hota hai. Recording se pehle Android ka consent dialog aata hai aur notification dikhti hai. Kuch bhi upload nahi hota, file sirf aapke phone me save hoti hai.")
         val a11y = c.screenControl.isEnabled()
         PermRow("Accessibility (screen control)", if (a11y) "On" else "Off", if (a11y) UltronColors.Green else UltronColors.TextLo, "Aap Android Settings mein khud on karte ho. On hone par ULTRON aapke command par click/scroll/type kar sakta hai aur screen ke text ko padh sakta hai (password fields nahi). Agent mode mein screen ka text Gemini ko ja sakta hai.")
         val overlay = android.provider.Settings.canDrawOverlays(context)
@@ -296,7 +296,50 @@ fun PrivacyScreen(settings: UltronSettings, onBack: () -> Unit) {
         SwitchRow("Cloud AI allow", "Chat text (aur recent context) seedha Google Gemini ko jata hai. Live voice mein har baat ki audio bhi transcription ke liye Gemini ko jati hai. Camera/screenshot kabhi nahi (screen ka text sirf neeche ke alag switch se).", settings.cloudConsent) { v -> scope.launch { c.settings.update { it.copy(cloudConsent = v, screenCloudConsent = if (v) it.screenCloudConsent else false) } } }
         SwitchRow("Screen text cloud ko bhejo", if (!settings.cloudConsent) "Pehle upar Cloud AI allow karo." else "Screen task (\"screen par ye karo\") mein screen ke buttons/text (password fields nahi) Gemini ko jate hain. Band ho to screen task chalega hi nahi.", settings.screenCloudConsent && settings.cloudConsent, enabled = settings.cloudConsent) { v -> scope.launch { c.settings.update { it.copy(screenCloudConsent = v) } } }
 
-        SwitchRow("Screenshot/recents block", "On: ULTRON ki screen ka screenshot ya screen-recording nahi banta aur recent apps mein preview chhupta hai. Share karne ke liye screenshot chahiye to off karo.", settings.secureScreen) { v -> scope.launch { c.settings.update { it.copy(secureScreen = v) } } }
+        SwitchRow("Screenshot/recents block", "Off (default): screenshot aur recording chalte hain. On: ULTRON ki screen ka screenshot/recording nahi banta aur recent apps me preview chhupta hai.", settings.secureScreen) { v -> scope.launch { c.settings.update { it.copy(secureScreen = v) } } }
+
+        SectionLabel("Calling")
+        val callPerms = arrayOf(Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE, Manifest.permission.ANSWER_PHONE_CALLS)
+        var callGranted by remember { mutableStateOf(callPerms.map { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) }
+        val callLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) {
+            callGranted = callPerms.map { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+        }
+        PermRow("Calling permissions", if (callGranted.all { it }) "Sab allowed" else "Kuch baaki", if (callGranted.all { it }) UltronColors.Green else UltronColors.Gold, "Contacts (naam dhoondhne), Call (seedha call), Phone state (call lagi ya nahi check) aur call kaatna. Har call se pehle ULTRON aapse awaaz me haan/nahi poochta. Kuch deny ho to dialer khulta hai aur ULTRON bolta hai ki call abhi shuru nahi hui.")
+        if (!callGranted.all { it }) Button(onClick = { callLauncher.launch(callPerms) }) { Text("Calling permissions do") }
+
+        SectionLabel("Screenshot aur screen recording")
+        val rec by com.ultron.ai.platform.capture.ScreenRecordService.recording.collectAsState()
+        val recErr by com.ultron.ai.platform.capture.ScreenRecordService.error.collectAsState()
+        val recSaved by com.ultron.ai.platform.capture.ScreenRecordService.lastSaved.collectAsState()
+        var shotNote by remember { mutableStateOf<String?>(null) }
+        var recMic by remember { mutableStateOf(false) }
+        val projLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+            val d = r.data
+            if (r.resultCode == android.app.Activity.RESULT_OK && d != null) com.ultron.ai.platform.capture.ScreenRecordService.start(context, r.resultCode, d, recMic)
+            else shotNote = "Recording ki permission nahi mili."
+        }
+        fun beginRecording() {
+            val mpm = context.getSystemService(android.media.projection.MediaProjectionManager::class.java)
+            projLauncher.launch(mpm.createScreenCaptureIntent())
+        }
+        val micLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
+            if (ok) beginRecording() else { recMic = false; shotNote = "Mic permission nahi mili, mic ke bina record kar sakte ho." }
+        }
+        SwitchRow("Recording me mic ki awaaz", "Sirf mic record hota hai. Phone ki andar ki awaaz (device audio) is build me record nahi hoti. Live mic chal raha ho to mic busy ho sakta hai.", recMic) { v -> recMic = v }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+            Button(onClick = {
+                var a: android.content.Context = context
+                while (a is android.content.ContextWrapper && a !is android.app.Activity) a = a.baseContext
+                (a as? android.app.Activity)?.let { act -> com.ultron.ai.platform.capture.ScreenshotSaver.capture(act) { _, m -> shotNote = m } } ?: run { shotNote = "Screenshot yahan se nahi ban sakta." }
+            }) { Text("Screenshot lo") }
+            if (!rec) Button(onClick = {
+                if (recMic && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) micLauncher.launch(Manifest.permission.RECORD_AUDIO) else beginRecording()
+            }) { Text("Recording shuru") }
+            else Button(onClick = { com.ultron.ai.platform.capture.ScreenRecordService.stop(context) }) { Text("Recording roko") }
+        }
+        if (rec) Text("● Recording chal rahi hai", color = UltronColors.Gold, modifier = Modifier.padding(top = 4.dp))
+        (recErr ?: shotNote)?.let { Text(it, color = UltronColors.Gold, modifier = Modifier.padding(top = 4.dp)) }
+        recSaved?.let { Text("Last video: $it", color = UltronColors.TextLo, style = MaterialTheme.typography.bodySmall) }
 
         SectionLabel("Aapka data")
         Text("Chats, journal, mood, yaadein aur reminders sirf is phone par, encrypted database (SQLCipher, Keystore key) mein hain. Android cloud backup band hai. Diagnostics log memory mein rehta hai, redacted, disk par nahi jata.", color = UltronColors.TextLo, style = MaterialTheme.typography.bodyMedium)

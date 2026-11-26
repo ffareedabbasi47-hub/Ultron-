@@ -143,12 +143,15 @@ fun HomeScreen(
         // Live voice sends each utterance to Gemini for transcription: it cannot work without a key and the user's explicit OK.
         // Exception: with the user's own wake recordings the mic can run ARMED (offline wake only, nothing uploaded).
         val offlineWakeReady = settings.wakePersonal && c.personalWake.ready
+        if (settings.wakePersonal && !c.personalWake.ready) {
+            ocrNote = "Wake word on hai par aapki wake recordings nahi hain. Menu → Wake me \"Hey/Hello/Wake up ULTRON\" 3-3 baar record karo, ya \"Offline wake word\" switch band karo."; return
+        }
         if (!offlineWakeReady) {
             if (c.settings.geminiKey() == null) { ocrNote = "Live voice ke liye pehle Menu → AI Brain mein Gemini API key daalo."; return }
             if (!settings.cloudConsent) { askLiveConsent = true; return }
         }
         c.turns.dismissError()
-        if (settings.overlayLight && !android.provider.Settings.canDrawOverlays(context) && !uiPrefs.getBoolean("overlay_asked", false)) askOverlay = true
+        if (settings.overlayLight && !android.provider.Settings.canDrawOverlays(context) && !overlayAskedThisRun) { askOverlay = true; overlayAskedThisRun = true }
         if (!com.ultron.ai.platform.live.LiveSessionService.start(context)) ocrNote = "Android ne mic service start nahi karne di. App ko screen par rakh kar mic dobara dabao."
         else scope.launch {
             // If nothing happened, say why instead of staying silent.
@@ -473,3 +476,6 @@ private fun Notice(
         }
     }
 }
+
+/** The overlay permission is asked again each app run until granted (the old "ask once, ever" meant a single dismissal disabled the edge light outside the app for good). */
+private var overlayAskedThisRun = false

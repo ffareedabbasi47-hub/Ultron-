@@ -6,6 +6,11 @@ sealed interface UltronAction {
     /** Searches YouTube and PLAYS the first matching video (falls back to the results page, and says so). */
     data class YouTubeSearch(val query: String) : UltronAction
     /** Turn a phone switch on/off (Wi-Fi, hotspot, Bluetooth...). Needs the Accessibility service except for the torch. */
+    /** Look the person up in Contacts, confirm out loud, then call. Never calls an unconfirmed or ambiguous match. */
+    data class CallContact(val name: String) : UltronAction
+    data class CallNumber(val number: String) : UltronAction
+    data object OpenDialer : UltronAction
+    data object EndCall : UltronAction
     data class AdjustVolume(val up: Boolean) : UltronAction
     /** [percent] = absolute 1..100, or null with [delta] (+/- percentage points). */
     data class SetBrightness(val percent: Int?, val delta: Int = 0) : UltronAction

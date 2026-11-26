@@ -338,7 +338,9 @@ function mkTex(w,h){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);g
 function mkFbo(tex){const f=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,f);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,tex,0);return f;}
 function freeRT(){if(!RT)return;for(const k of['fbos','texs','rbs'])for(const o of RT[k]||[])(k==='fbos'?gl.deleteFramebuffer:k==='texs'?gl.deleteTexture:gl.deleteRenderbuffer).call(gl,o);RT=null;}
 function resize(){
-  const dpr=Math.min(window.devicePixelRatio||1,quality==='high'?2:1.25);
+  let dpr=Math.min(window.devicePixelRatio||1,quality==='high'?3:1.25);
+  // sharper on dense phone screens (was capped at 2x => upscaled/blurry), but never more than ~2.6M pixels (GPU/battery)
+  if(quality==='high'){const px=canvas.clientWidth*canvas.clientHeight*dpr*dpr;if(px>2.6e6)dpr=Math.max(1,Math.sqrt(2.6e6/Math.max(1,canvas.clientWidth*canvas.clientHeight)));}
   const w=Math.max(2,Math.floor(canvas.clientWidth*dpr)),h=Math.max(2,Math.floor(canvas.clientHeight*dpr));
   if(RT&&RT.w===w&&RT.h===h&&RT.q===quality)return;
   canvas.width=w;canvas.height=h;freeRT();
@@ -453,12 +455,21 @@ function frame(now){
   fAcc+=dt;fN++;if(fAcc>=.5){fpsMeasured=Math.round(fN/fAcc);fpsEl.textContent=fpsMeasured+' fps';fAcc=0;fN=0;}
   render(dt);
 }
+// Visual size: SIZE_BOOST scales the framing distance (1.15 = ~15% bigger); FIT_MARGIN keeps head/feet/sides inside the screen (was 1.12).
+const SIZE_BOOST=1.15,FIT_MARGIN=1.05;
 function render(dt){
-  resize();animate(dt);if(model){const mo=S.reduced?0:1;model.root.r=[0,Math.sin(S.t*.45)*(S.embed?.05:.28)*mo,0];model.root.t=[model.bt[0],model.bt[1]+Math.sin(S.t*1.4)*.015*mo,model.bt[2]];}updateWorld(model?model.root:root,null);
+  resize();animate(dt);if(model){const mo=S.reduced?0:1,st=S.state;
+    // These bundled GLB models are STATIC meshes (no skeleton, no animation clips, no morph targets): there are no arms/jaw/lips to move.
+    // What is honest and possible is whole-body motion: breathing, weight shift, and state-dependent lean/tilt. NOT lip sync.
+    const tp=st==='listening'?.04:st==='thinking'?-.03:st==='speaking'?S.mouth*.035:0;
+    const tz=st==='listening'?Math.sin(S.t*.8)*.025:st==='thinking'?.05+Math.sin(S.t*.5)*.02:st==='speaking'?Math.sin(S.t*1.1)*.015:0;
+    S.bp=damp(S.bp||0,tp*mo,5,dt);S.bq=damp(S.bq||0,tz*mo,5,dt);const lk=S.look||[0,0];
+    model.root.r=[S.bp,Math.sin(S.t*.45)*(S.embed?.05:.28)*mo+lk[0]*.12*mo,S.bq];
+    const br=1+Math.sin(S.t*1.6)*(st==='speaking'?.006:.004)*mo;if(model.root.children&&model.root.children[0])model.root.children[0].s=[br,br,br];model.root.t=[model.bt[0],model.bt[1]+Math.sin(S.t*1.4)*.015*mo,model.bt[2]];}updateWorld(model?model.root:root,null);
   const asp=RT.w/RT.h,portrait=asp<.85;
-  let dist=S.dist*(S.embed?(portrait?.95:.68):(portrait?1.5:1.1))/Math.min(1,asp*1.15+.25);
+  let dist=S.dist*(S.embed?(portrait?.95:.68):(portrait?1.5:1.1))/Math.min(1,asp*1.15+.25)/SIZE_BOOST;
   // a loaded model must always be fully visible (head to feet, side to side), whatever the screen shape
-  if(model&&model.fh){const tn=Math.tan(16*Math.PI/180);dist=Math.max(dist,(model.fh*0.5*1.12)/tn,(model.fw*0.5*1.12)/(tn*asp));}
+  if(model&&model.fh){const tn=Math.tan(16*Math.PI/180);dist=Math.max(dist,(model.fh*0.5*FIT_MARGIN)/tn,(model.fw*0.5*FIT_MARGIN)/(tn*asp));}
   const eye=[Math.sin(S.yaw)*Math.cos(S.pitch)*dist,.2+Math.sin(S.pitch)*dist,Math.cos(S.yaw)*Math.cos(S.pitch)*dist];
   camOff=damp(camOff,(S.embed||panelOpen)?0:.35,4,dt);const target=model?[0,-.6,0]:[0,(S.embed?-.4:(portrait?-1.35:-1.15))+camOff,0];
   const view=M.lookAt(eye,target,[0,1,0]),proj=M.persp(32*Math.PI/180,asp,.1,50),vp=M.mul(proj,view);
@@ -655,6 +666,7 @@ async function loadGLB(buf){
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,bmp);bmp.close();gl.generateMipmap(gl.TEXTURE_2D);
     const sm=(json.samplers&&json.samplers[t.sampler])||{};const wrap=w=>w===33071||w===33648?w:gl.REPEAT;
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    {const ax=gl.getExtension('EXT_texture_filter_anisotropic');if(ax)gl.texParameterf(gl.TEXTURE_2D,ax.TEXTURE_MAX_ANISOTROPY_EXT,Math.min(8,gl.getParameter(ax.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));} // sharper textures at grazing angles
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,wrap(sm.wrapS));gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,wrap(sm.wrapT));
     texs.push(tex);imgCache.set(t.source,tex);return tex;
   }

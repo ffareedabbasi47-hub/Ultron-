@@ -70,7 +70,7 @@ data class UltronSettings(
     /** Folder (SAF tree URI) where the Builder agent saves finished projects. Empty = app-private folder. */
     val builderFolderUri: String = "",
     /** Blocks screenshots/screen recording and hides ULTRON in the recent-apps preview (chats, journal, API key). */
-    val secureScreen: Boolean = true,
+    val secureScreen: Boolean = false,
     /** Separate, explicit permission for sending on-screen text (accessibility tree) to Gemini in screen-agent mode. */
     val screenCloudConsent: Boolean = false,
 
@@ -285,7 +285,7 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
         val K_STREAMSTT = booleanPreferencesKey("stream_stt")
         val K_LIVECALL = booleanPreferencesKey("live_call")
         val K_BUILDER_DIR = stringPreferencesKey("builder_dir")
-        val K_SECURE = booleanPreferencesKey("secure_screen")
+        val K_SECURE = booleanPreferencesKey("secure_screen_v2")
         val K_SCREEN_CONSENT = booleanPreferencesKey("screen_cloud_consent")
         val K_STREAM = booleanPreferencesKey("streaming")
         val K_TIMEOUT = intPreferencesKey("timeout_sec")

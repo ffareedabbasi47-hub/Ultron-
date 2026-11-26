@@ -171,8 +171,19 @@ class LiveSessionEngine(
         val cloudReady = s.cloudConsent && settings.geminiKey() != null
         // Armed = the mic only feeds the on-phone wake matcher. It is used when there is no cloud permission/key at all
         // (nothing could be transcribed anyway) or when the user chose "wake first". Phone-call mode streams ALL audio, so it never starts armed.
-        val armed = s.wakePersonal && personal?.ready == true && (!cloudReady || s.wakeFirst)
-        val useCall = call != null && s.liveCall && cloudReady && !forceNormal && !armed
+        val mode = com.ultron.ai.domain.live.VoiceModePolicy.decide(
+            wakeOn = s.wakePersonal, wakeReady = personal?.ready == true, cloudReady = cloudReady, wakeFirst = s.wakeFirst,
+            liveCallEnabled = s.liveCall, callAvailable = call != null, forceNormal = forceNormal,
+        )
+        if (mode == com.ultron.ai.domain.live.VoiceMode.NEEDS_WAKE_SETUP) {
+            // Wake word is ON but there are no recordings: do NOT silently start another voice mode.
+            stop()
+            _message.value = "Wake word on hai par aapki wake recordings nahi hain, isliye kuch start nahi kiya. Menu → Wake me \"Hey/Hello/Wake up ULTRON\" 3-3 baar record karo, ya \"Offline wake word\" switch band karke normal voice use karo."
+            diagnostics.log("live", "start refused: wake word on, no templates (no fallback to another voice mode)")
+            return
+        }
+        val armed = mode == com.ultron.ai.domain.live.VoiceMode.ARMED
+        val useCall = mode == com.ultron.ai.domain.live.VoiceMode.CALL
         val ok = mic.start(if (useCall) ::onCallFrame else ::onFrame, ::onFatal, ::onSilenced)
         if (!ok) { publishDiag(); return } // onFatal already set the state
         if (_state.value != LiveState.STARTING) {

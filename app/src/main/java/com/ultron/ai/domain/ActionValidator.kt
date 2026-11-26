@@ -25,6 +25,12 @@ object ActionValidator {
         is UltronAction.OpenSystemSettings -> Validation.OK
         is UltronAction.SetToggle -> Validation.OK
         is UltronAction.AdjustVolume -> Validation.OK
+        is UltronAction.CallContact ->
+            if (action.name.isBlank() || action.name.length > 40) Validation.no("Contact ka naam 1-40 akshar ka hona chahiye.") else Validation.OK
+        is UltronAction.CallNumber ->
+            if (ContactMatcher.normalizeNumber(action.number) == null) Validation.no("Number sahi nahi hai (3 se 15 digit).") else Validation.OK
+        UltronAction.OpenDialer -> Validation.OK
+        UltronAction.EndCall -> Validation.OK
         is UltronAction.SetDnd -> Validation.OK
         is UltronAction.MediaControl -> Validation.OK
         is UltronAction.SetBrightness ->

@@ -70,7 +70,8 @@ class OverlayLight(private val context: Context) {
         val type = if (app) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
         if (view != null && attachedType != type) hide()
         if (view == null) {
-            current?.takeIf { it !== this && it.view != null }?.hide() // never two overlays
+            current?.takeIf { it !== this && it.view != null }?.let { it.hide(); it.removeFading() } // never two overlays
+            removeFading()
             val gv = GlowView(if (app) context else (a11y ?: context))
             val target = if (app) appWm else (a11y?.getSystemService(WindowManager::class.java) ?: appWm)
             val lp = WindowManager.LayoutParams(
@@ -89,6 +90,7 @@ class OverlayLight(private val context: Context) {
             try { target.addView(gv, lp) } catch (_: Exception) { return }
             view = gv; wm = target; attachedType = type; current = this
             gv.setReduced(reduced)
+            if (!reduced) { gv.alpha = 0f; gv.animate().alpha(1f).setDuration(300).start() } // soft fade-in
             _showing.value = true
             // The wake event can arrive a moment BEFORE the window exists (the light is created by the same wake): still flash.
             if (SystemClock.uptimeMillis() - flashAt < 800L) gv.flash()
@@ -99,11 +101,21 @@ class OverlayLight(private val context: Context) {
     /** Short activation burst after a wake word (returns to the real mode by itself). */
     fun flash() { flashAt = SystemClock.uptimeMillis(); view?.flash() }
 
+    private var fading: GlowView? = null
+
+    private fun removeFading() { fading?.let { f -> f.animate().cancel(); f.stopAnim(); try { wm.removeView(f) } catch (_: Exception) {} }; fading = null }
+
+    /** Smooth fade-out (~350 ms), then the window is removed. A new show() during the fade removes the old window at once (never two at a time). */
     fun hide() {
-        view?.let { v -> v.stopAnim(); try { wm.removeView(v) } catch (_: Exception) {} }
+        val v = view
         view = null
         attachedType = 0
         if (current === this) { current = null; _showing.value = false }
+        if (v == null) return
+        removeFading()
+        if (reduced) { v.stopAnim(); try { wm.removeView(v) } catch (_: Exception) {}; return }
+        fading = v
+        v.animate().alpha(0f).setDuration(350).withEndAction { if (fading === v) { v.stopAnim(); try { wm.removeView(v) } catch (_: Exception) {}; fading = null } }.start()
     }
 
     private class GlowView(c: Context) : View(c) {
@@ -111,10 +123,13 @@ class OverlayLight(private val context: Context) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
         private val outline = Path()
         private val rotM = Matrix()
-        private var gradient: SweepGradient? = null
+        private var comet = HashMap<EdgeMode, SweepGradient>()
+        private var ring: SweepGradient? = null
         private var mode = EdgeMode.LISTENING
         private var reduced = false
         private var flashUntil = 0L
+        private var cx0 = 0f
+        private var cy0 = 0f
         private var phase = 0f
         private var lastTick = 0L
         private var lastDraw = 0L
@@ -155,12 +170,24 @@ class OverlayLight(private val context: Context) {
             val inset = 4f * d
             outline.rewind()
             outline.addRoundRect(RectF(inset, inset, w - inset, h - inset), 36f * d, 36f * d, Path.Direction.CW)
-            gradient = buildGradient(w / 2f, h / 2f)
+            comet.clear(); ring = buildRing(w / 2f, h / 2f)
+            cx0 = w / 2f; cy0 = h / 2f
         }
 
-        /** Two comets: bright head, long fading tail behind it (clockwise), rotated by [matrix]. */
-        private fun buildGradient(cx: Float, cy: Float): SweepGradient {
-            val v = 0x8B5CF6; val c = 0x35D6E8; val lc = 0x9AF3FF; val wh = 0xFFFFFF
+        /** Speaking / wake: flowing multicolour ring (cyan, electric blue, purple, magenta, soft pink), soft alpha so it is never glaring. */
+        private fun buildRing(cx: Float, cy: Float): SweepGradient {
+            val cols = intArrayOf(0xFF35D6E8.toInt(), 0xFF3B82F6.toInt(), 0xFF8B5CF6.toInt(), 0xFFD946EF.toInt(), 0xFFF472B6.toInt(), 0xFF8B5CF6.toInt(), 0xFF35D6E8.toInt())
+            return SweepGradient(cx, cy, cols, floatArrayOf(0f, .17f, .34f, .52f, .68f, .84f, 1f))
+        }
+
+        /** Listening = cyan/blue comets, thinking = purple/blue comets. */
+        private fun cometFor(m: EdgeMode): SweepGradient = comet.getOrPut(if (m == EdgeMode.THINKING) EdgeMode.THINKING else EdgeMode.LISTENING) {
+            if (m == EdgeMode.THINKING) buildGradient(cx0, cy0, 0x8B5CF6, 0x6366F1, 0xA5B4FC) else buildGradient(cx0, cy0, 0x3B82F6, 0x35D6E8, 0x9AF3FF)
+        }
+
+        /** Two comets: bright head, long fading tail behind it (clockwise), rotated by [rotM]. */
+        private fun buildGradient(cx: Float, cy: Float, v: Int, c: Int, lc: Int): SweepGradient {
+            val wh = 0xFFFFFF
             fun argb(a: Int, rgb: Int) = (a shl 24) or rgb
             val half = floatArrayOf(0f, 0.20f, 0.38f, 0.47f, 0.49f, 0.499f)
             val col = intArrayOf(argb(0, v), argb(0x66, v), argb(0xCC, c), argb(0xFF, lc), argb(0xFF, wh), argb(0, wh))
@@ -178,7 +205,7 @@ class OverlayLight(private val context: Context) {
         }
 
         override fun onDraw(canvas: Canvas) {
-            val g = gradient ?: return
+            if (cx0 == 0f) return
             val now = SystemClock.uptimeMillis()
             val m = effective(now)
             if (m == EdgeMode.OFF) return
@@ -199,6 +226,9 @@ class OverlayLight(private val context: Context) {
             paint.strokeWidth = w; paint.alpha = (45 * k).toInt().coerceIn(0, 255)
             canvas.drawPath(outline, paint)
             // Comets: one shader, two strokes (soft glow + sharp core).
+            val multi = m == EdgeMode.SPEAKING || m == EdgeMode.WAKE || now < flashUntil
+            val g = (if (multi) ring else cometFor(m)) ?: return
+            if (multi) k *= 0.8f // multicolour ring is brighter everywhere: keep it calm
             rotM.setRotate(phase * 360f, width / 2f, height / 2f)
             g.setLocalMatrix(rotM)
             paint.shader = g

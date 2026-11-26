@@ -137,3 +137,69 @@ class DeviceCommandTest {
         assertEquals(UltronAction.OpenApp("whatsapp"), t("whatsapp kholo"))
     }
 }
+
+class CallTest {
+    private fun t(s: String) = CommandParser.parse(s)
+    @org.junit.Test fun parse() {
+        assertEquals(UltronAction.CallContact("papa"), t("Papa ko call karo"))
+        assertEquals(UltronAction.CallContact("mom"), t("mom ko call karo"))
+        assertEquals(UltronAction.CallContact("rahul"), t("call rahul"))
+        assertEquals(UltronAction.CallContact("papa"), t("call karo papa ko"))
+        assertEquals(UltronAction.CallNumber("9876543210"), t("is number par call karo 98765 43210"))
+        assertEquals(UltronAction.CallNumber("+919876543210"), t("+91 98765 43210 par call karo"))
+        assertEquals(UltronAction.OpenDialer, t("dialer kholo"))
+        assertEquals(UltronAction.EndCall, t("call cancel karo"))
+        assertEquals(null, t("call"))
+    }
+    @org.junit.Test fun matcher() {
+        val e = listOf(
+            ContactEntry("1", "Papa", "98765 43210", true),
+            ContactEntry("2", "Rahul Sharma", "90000 11111", true), ContactEntry("3", "Rahul Verma", "92222 33333", true),
+            ContactEntry("4", "Mom", "93333 44444", false), ContactEntry("4", "Mom", "94444 55555", false),
+            ContactEntry("5", "Amit", "95555 66666", true), ContactEntry("5", "Amit", "+91 95555 66666", false),
+        )
+        assertEquals(ContactMatch.One("Papa", "9876543210"), ContactMatcher.find("papa", e))
+        assertEquals(ContactMatch.None, ContactMatcher.find("sunil", e))
+        assertTrue(ContactMatcher.find("rahul", e) is ContactMatch.Ambiguous)
+        assertEquals(ContactMatch.One("Rahul Verma", "9222233333"), ContactMatcher.find("rahul verma", e))
+        assertTrue(ContactMatcher.find("mom", e) is ContactMatch.MultiNumber)
+        assertTrue(ContactMatcher.find("amit", e) is ContactMatch.One) // same number twice = one number
+        assertEquals(null, ContactMatcher.normalizeNumber("12"))
+        assertEquals("+919876543210", ContactMatcher.normalizeNumber("+91 98765-43210"))
+    }
+}
+
+class YouTubePickTest {
+    private fun item(id: String, title: String, ch: String, len: String, age: String, views: String) =
+        "\"videoRenderer\":{\"videoId\":\"$id\",\"title\":{\"runs\":[{\"text\":\"$title\"}]},\"ownerText\":{\"runs\":[{\"text\":\"$ch\"}]},\"publishedTimeText\":{\"simpleText\":\"$age\"},\"viewCountText\":{\"simpleText\":\"$views\"},\"lengthText\":{\"accessibility\":{\"accessibilityData\":{\"label\":\"x\"}},\"simpleText\":\"$len\"}}"
+
+    @org.junit.Test fun parsesCandidates() {
+        val html = item("AAAAAAAAAAA", "Random cats", "CatTV", "3:10", "2 years ago", "5M views") + item("BBBBBBBBBBB", "Iron Man new technology \\\"suit\\\" explained", "Tech Daily", "12:34", "2 days ago", "1.2M views")
+        val c = YouTubeResults.candidates(html)
+        assertEquals(2, c.size)
+        assertEquals("Iron Man new technology \"suit\" explained", c[1].title)
+        assertEquals("Tech Daily", c[1].channel); assertEquals(754, c[1].durationSec); assertEquals(2880L, c[1].ageMinutes); assertEquals(1_200_000L, c[1].views)
+    }
+    @org.junit.Test fun notBlindlyFirst() {
+        val html = item("AAAAAAAAAAA", "Random cats", "CatTV", "3:10", "2 years ago", "50M views") +
+            item("CCCCCCCCCCC", "Iron Man reaction short", "X", "0:30", "1 day ago", "10 views") +
+            item("BBBBBBBBBBB", "Iron Man technology latest explained", "Tech Daily", "12:34", "2 days ago", "1.2M views")
+        val p = YouTubeRanker.pick("iron man latest technology", YouTubeResults.candidates(html))!!
+        assertEquals("BBBBBBBBBBB", p.candidate.id)
+    }
+    @org.junit.Test fun latestPrefersRecent() {
+        val html = item("AAAAAAAAAAA", "Space exploration documentary", "NASA", "40:00", "3 years ago", "9M views") + item("BBBBBBBBBBB", "Space exploration news this week", "NASA", "8:00", "1 day ago", "100K views")
+        assertEquals("BBBBBBBBBBB", YouTubeRanker.pick("latest space exploration", YouTubeResults.candidates(html))!!.candidate.id)
+        assertEquals("AAAAAAAAAAA", YouTubeRanker.pick("space exploration documentary", YouTubeResults.candidates(html))!!.candidate.id)
+    }
+    @org.junit.Test fun emptyOrMissingDataInventsNothing() {
+        assertEquals(null, YouTubeRanker.pick("x", emptyList()))
+        assertTrue(YouTubeResults.candidates("<html>no results</html>").isEmpty())
+    }
+    @org.junit.Test fun queryAndParse() {
+        assertEquals("iron man latest technology", YouTubeQuery.clean("mujhe Iron Man ki latest technology video"))
+        assertEquals(UltronAction.YouTubeSearch("iron man ki latest technology"), CommandParser.parse("mujhe Iron Man ki latest technology video chalao"))
+        assertEquals(UltronAction.YouTubeSearch("space exploration"), CommandParser.parse("space exploration video chalao"))
+        assertEquals(UltronAction.SetToggle(ToggleTarget.WIFI, true), CommandParser.parse("wifi on karo"))
+    }
+}

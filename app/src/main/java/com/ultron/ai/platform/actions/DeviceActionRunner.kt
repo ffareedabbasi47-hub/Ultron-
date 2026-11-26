@@ -48,6 +48,10 @@ class DeviceActionRunner(
         is UltronAction.YouTubeSearch -> youTubePlay(action.query)
         is UltronAction.OpenSystemSettings -> openSettings(action.target)
         is UltronAction.SetToggle -> setToggle(action.target, action.on)
+        is UltronAction.CallContact -> callContact(action.name)
+        is UltronAction.CallNumber -> placeCall(action.number, action.number)
+        UltronAction.OpenDialer -> openDialer()
+        UltronAction.EndCall -> endCall()
         is UltronAction.AdjustVolume -> adjustVolume(action.up)
         is UltronAction.SetBrightness -> setBrightness(action.percent, action.delta)
         is UltronAction.SetDnd -> setDnd(action.on)
@@ -128,21 +132,25 @@ class DeviceActionRunner(
     private suspend fun youTubePlay(query: String): ActionResult {
         val audio = context.getSystemService(android.media.AudioManager::class.java)
         val wasPlaying = audio?.isMusicActive == true
-        val id = withContext(Dispatchers.IO) { firstVideoId(query) }
+        val html = withContext(Dispatchers.IO) { fetchResults(com.ultron.ai.domain.YouTubeQuery.clean(query)) }
+        val pick = html?.let { com.ultron.ai.domain.YouTubeRanker.pick(query, YouTubeResults.candidates(it)) }
+        val id = pick?.candidate?.id ?: html?.let { YouTubeResults.firstVideoId(it) }
+        val what = pick?.candidate?.let { "\"${it.title.take(70)}\"" + (it.channel?.let { ch -> " ($ch)" } ?: "") }
+        diagnosticsNote("youtube pick: ${pick?.reason ?: "none (fallback)"}")
         val uri = Uri.parse(if (id != null) YouTubeResults.watchUrl(id) else YouTubeResults.resultsUrl(Uri.encode(query)))
         return try {
             val direct = BackgroundLaunch.canStartDirectly(context)
             val r = BackgroundLaunch.launch(context, Intent(Intent.ACTION_VIEW, uri), "YouTube: $query",
-                if (id != null) "YouTube par \"$query\" ka pehla video khol diya." else "Video seedha nahi dhoondh paya, isliye \"$query\" ke search results khol diye. Video aap chun lo.")
+                if (id != null) "YouTube par ${what ?: "\"$query\" ka video"} khol diya." else "Video seedha nahi dhoondh paya, isliye \"$query\" ke search results khol diye. Video aap chun lo.")
             if (!r.success || !direct || id == null) r
             else {
                 // Best available evidence: Android reports whether any media stream is active. It cannot say WHICH app is playing.
                 delay(5000)
                 val now = audio?.isMusicActive == true
                 when {
-                    now && !wasPlaying -> ActionResult(true, "Video khol diya aur audio chalna shuru ho gaya (Android ne media active detect kiya).")
-                    now && wasPlaying -> ActionResult(true, "Video khol diya. Pehle se koi audio chal raha tha, isliye main pakka nahi bata sakta ki ye naya video chal raha hai.")
-                    else -> ActionResult(true, "Video khol diya, par audio chalta detect nahi hua. Shayad autoplay band ho ya video load ho raha ho; screen par dekh lo. Main ye nahi keh sakta ki video chal raha hai.")
+                    now && !wasPlaying -> ActionResult(true, "Boss, aapke liye ek relevant video chala raha hoon${what?.let { ": $it" } ?: ""}. (Android ne audio active detect kiya.)")
+                    now && wasPlaying -> ActionResult(true, "Video ${what ?: ""} khol diya. Pehle se koi audio chal raha tha, isliye main pakka nahi bata sakta ki ye naya video chal raha hai.")
+                    else -> ActionResult(true, "Video ${what ?: ""} khol diya, par audio chalta detect nahi hua. Shayad autoplay band ho ya video load ho raha ho; screen par dekh lo. Main ye nahi keh sakta ki video chal raha hai.")
                 }
             }
         } catch (e: ActivityNotFoundException) {
@@ -150,16 +158,82 @@ class DeviceActionRunner(
         }
     }
 
-    private fun firstVideoId(query: String): String? = try {
+    private fun diagnosticsNote(@Suppress("UNUSED_PARAMETER") s: String) {}
+
+    private fun fetchResults(query: String): String? = try {
         val c = java.net.URL(YouTubeResults.resultsUrl(Uri.encode(query))).openConnection() as java.net.HttpURLConnection
         c.connectTimeout = 5000; c.readTimeout = 6000
         c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36")
         c.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
         c.setRequestProperty("Cookie", "CONSENT=YES+1")
-        try { if (c.responseCode == 200) YouTubeResults.firstVideoId(c.inputStream.bufferedReader().use { it.readText().take(1_500_000) }) else null } finally { c.disconnect() }
+        try { if (c.responseCode == 200) c.inputStream.bufferedReader().use { it.readText().take(1_500_000) } else null } finally { c.disconnect() }
     } catch (_: Exception) { null }
 
     // ---- phone switches --------------------------------------------------------------------
+
+    // ---- calling -----------------------------------------------------------------------------
+
+    private fun granted(p: String) = androidx.core.content.ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
+
+    private fun openDialer(): ActionResult = try {
+        BackgroundLaunch.launch(context, Intent(Intent.ACTION_DIAL), "Dialer", "Dialer khol diya. Call aap khud lagaoge.")
+    } catch (e: Exception) { ActionResult(false, "Is phone par dialer app nahi mila.") }
+
+    private suspend fun contactEntries(query: String): List<com.ultron.ai.domain.ContactEntry> = withContext(Dispatchers.IO) {
+        val out = ArrayList<com.ultron.ai.domain.ContactEntry>()
+        val P = android.provider.ContactsContract.CommonDataKinds.Phone
+        val first = query.trim().split(Regex("\\s+")).firstOrNull().orEmpty()
+        try {
+            context.contentResolver.query(P.CONTENT_URI, arrayOf(P.CONTACT_ID, P.DISPLAY_NAME, P.NUMBER, P.TYPE),
+                "${P.DISPLAY_NAME} LIKE ?", arrayOf("%$first%"), null)?.use { c ->
+                while (c.moveToNext() && out.size < 200) out.add(com.ultron.ai.domain.ContactEntry(c.getString(0) ?: "", c.getString(1) ?: "", c.getString(2) ?: "", c.getInt(3) == P.TYPE_MOBILE))
+            }
+        } catch (_: SecurityException) {}
+        out
+    }
+
+    private suspend fun callContact(name: String): ActionResult {
+        if (!granted(android.Manifest.permission.READ_CONTACTS))
+            return ActionResult(false, "Contacts dekhne ki permission nahi hai, isliye \"$name\" ko dhoondh nahi sakta. Menu → Privacy aur Permissions me \"Calling permissions\" allow karo. Tab tak number bolke call kara sakte ho, ya dialer kholo bolo.")
+        return when (val m = com.ultron.ai.domain.ContactMatcher.find(name, contactEntries(name))) {
+            com.ultron.ai.domain.ContactMatch.None -> ActionResult(false, "\"$name\" naam ka koi contact nahi mila. Kisi ko call nahi kiya.")
+            is com.ultron.ai.domain.ContactMatch.Ambiguous -> ActionResult(false, "\"$name\" naam ke kai contacts hain: ${m.names.joinToString(", ")}. Poora naam bolo. Maine kisi ko call nahi kiya.")
+            is com.ultron.ai.domain.ContactMatch.MultiNumber -> ActionResult(false, "${m.name} ke kai alag numbers hain (${m.numbers.joinToString(", ") { it.takeLast(4).padStart(5, '*') }}). Kaun sa number chahiye? Number bolke call karo. Kisi ko call nahi kiya.")
+            is com.ultron.ai.domain.ContactMatch.One -> placeCall(m.number, m.name)
+        }
+    }
+
+    private suspend fun placeCall(number: String, label: String): ActionResult {
+        val shown = if (label == number) "…" + number.takeLast(4) else "$label (…${number.takeLast(4)})"
+        val yes = broker.ask("$shown ko call karun? Haan ya nahi bolo.", { x -> val k = tts.beginSpeech(0L); tts.enqueue(k, x); tts.endSpeech(k) })
+        if (!yes) return ActionResult(false, "Theek hai, call nahi kiya.")
+        val uri = Uri.parse("tel:" + Uri.encode(number))
+        val direct = granted(android.Manifest.permission.CALL_PHONE)
+        val intent = Intent(if (direct) Intent.ACTION_CALL else Intent.ACTION_DIAL, uri)
+        return try {
+            val canStart = BackgroundLaunch.canStartDirectly(context)
+            val r = BackgroundLaunch.launch(context, intent, "Call: $label", "")
+            if (!r.success || !canStart) return r
+            if (!direct) return ActionResult(true, "Dialer me $label ka number daal diya hai. Call lagane ke liye aapko green button dabana hoga (CALL_PHONE permission nahi hai, to call abhi shuru nahi hui).")
+            if (!granted(android.Manifest.permission.READ_PHONE_STATE)) return ActionResult(true, "$label ko call lagane ka request bhej diya. Call sach me lagi ya nahi, ye main verify nahi kar sakta (phone state ki permission nahi).")
+            delay(3500)
+            val tm = context.getSystemService(android.telecom.TelecomManager::class.java)
+            if (tm?.isInCall == true) ActionResult(true, "$label ko call lag gayi hai (Android ne call active dikhai).")
+            else ActionResult(false, "Call lagane ki koshish ki par Android ne call shuru hoti nahi dikhai (network, SIM ya dialer ne roka ho sakta hai). Screen check karo.")
+        } catch (e: SecurityException) { ActionResult(false, "Android ne call lagane ki permission nahi di.") }
+        catch (e: Exception) { ActionResult(false, "Call/dialer khul nahi paya.") }
+    }
+
+    private fun endCall(): ActionResult {
+        if (Build.VERSION.SDK_INT < 28) return ActionResult(false, "Is Android version par app call kaat nahi sakta. Phone ke red button se kaato.")
+        if (!granted(android.Manifest.permission.ANSWER_PHONE_CALLS)) return ActionResult(false, "Call kaatne ki permission nahi hai. Menu → Privacy me \"Calling permissions\" allow karo.")
+        val tm = context.getSystemService(android.telecom.TelecomManager::class.java)
+        if (tm == null || (granted(android.Manifest.permission.READ_PHONE_STATE) && !tm.isInCall)) return ActionResult(false, "Abhi koi call chal nahi rahi.")
+        return try {
+            @Suppress("DEPRECATION") val ok = tm.endCall()
+            if (ok) ActionResult(true, "Call kaat di.") else ActionResult(false, "Call kaatne ki koshish ki par Android ne nahi kaati.")
+        } catch (e: SecurityException) { ActionResult(false, "Android ne call kaatne nahi di.") }
+    }
 
     // ---- volume / brightness / DND / media ---------------------------------------------------
 

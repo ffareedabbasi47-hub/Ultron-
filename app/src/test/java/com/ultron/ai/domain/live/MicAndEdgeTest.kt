@@ -91,3 +91,25 @@ class MicAndEdgeTest {
         assertNull(WakeWord.parse("hello everyone welcome back to the channel", allowBare = false))
     }
 }
+
+class VoiceModePolicyTest {
+    private fun d(wakeOn: Boolean, ready: Boolean, cloud: Boolean, first: Boolean = true, call: Boolean = true, avail: Boolean = true, force: Boolean = false) =
+        VoiceModePolicy.decide(wakeOn, ready, cloud, first, call, avail, force)
+
+    @org.junit.Test fun wakeOnWithoutRecordingsNeverFallsBackToCallMode() {
+        assertEquals(VoiceMode.NEEDS_WAKE_SETUP, d(wakeOn = true, ready = false, cloud = true))
+        assertEquals(VoiceMode.NEEDS_WAKE_SETUP, d(wakeOn = true, ready = false, cloud = false))
+    }
+    @org.junit.Test fun wakeOnWithRecordingsIsArmed() {
+        assertEquals(VoiceMode.ARMED, d(wakeOn = true, ready = true, cloud = true))
+        assertEquals(VoiceMode.ARMED, d(wakeOn = true, ready = true, cloud = false))
+    }
+    @org.junit.Test fun wakeFirstOffKeepsOldCallMode() {
+        assertEquals(VoiceMode.CALL, d(wakeOn = true, ready = true, cloud = true, first = false))
+    }
+    @org.junit.Test fun wakeOffKeepsOldBehaviour() {
+        assertEquals(VoiceMode.CALL, d(wakeOn = false, ready = false, cloud = true))
+        assertEquals(VoiceMode.NORMAL, d(wakeOn = false, ready = false, cloud = true, call = false))
+        assertEquals(VoiceMode.NORMAL, d(wakeOn = false, ready = false, cloud = true, force = true))
+    }
+}
