@@ -15,7 +15,7 @@ object CommandParser {
 
     private val stop = Regex("^(chup|chup ho ja|chup ho jao|stop|ruk ja|ruko|bas|stop speaking|shant)$")
 
-    private val remember = Regex("^(?:yaad rakh(?:na|o)?|remember(?: that)?|note kar(?:o)?)\\s*[:\\-]?\\s+(.+)$")
+    private val remember = Regex("^(?:yaad rakh(?:na|o)?|remember(?: that)?|note kar(?:o)?)\\s*[:\\-]?\\s+(?:ki\\s+)?(.+)$")
 
     private val remindEn = Regex("^remind(?:er)?\\s+(?:me\\s+)?(?:to\\s+)?(.+?)\\s+in\\s+(\\d{1,4})\\s*$UNIT$")
     private val remindHi = Regex(
@@ -77,6 +77,8 @@ object CommandParser {
         clickEn.matchEntire(t)?.let { return UltronAction.Click(it.groupValues[1].trim()) }
         clickHi.matchEntire(t)?.let { m -> return UltronAction.Click((m.groupValues[1].ifEmpty { m.groupValues[2] }).trim()) }
 
+        parseAlarm(t)?.let { return it }
+        parseMessage(t)?.let { return it }
         parseCall(t)?.let { return it }
         parseToggle(t)?.let { return it }
         parseDevice(t)?.let { return it }
@@ -167,6 +169,32 @@ object CommandParser {
     private val mNext = Regex("^(?:next|agla|agli)(?:\\s+(?:video|song|gaana|track))?(?:\\s+(?:chalao|karo|laga do|lagao))?$")
     private val mPrev = Regex("^(?:previous|prev|pichla|pichli|peechla|peechli)(?:\\s+(?:video|song|gaana|track))?(?:\\s+(?:chalao|karo|laga do|lagao))?$")
     private val ytClose = Regex("^(?:youtube|yt)\\s+(?:band|close|stop)$DO2$|^(?:close|band kar|band karo)\\s+(?:youtube|yt)$")
+
+    private val msgKo = Regex("^(?:whatsapp\\s+(?:par|pe)\\s+)?(.+?)\\s+ko\\s+(?:whatsapp\\s+(?:par\\s+)?)?(?:message|sms|msg|text)\\s+(?:bhejo|bhej do|bhejna|karo|kar do|send karo|likho|draft karo)(?:\\s+(?:ki|ke)\\s+(.+))?$")
+    private val msgEn = Regex("^(?:send|text)\\s+(?:a\\s+)?(?:message|sms|text\\s+)?\\s*to\\s+(.+?)(?:\\s+(?:saying|that|ki)\\s+(.+))?$")
+
+    internal fun parseMessage(t: String): UltronAction? {
+        val m = msgKo.matchEntire(t) ?: msgEn.matchEntire(t) ?: return null
+        val name = m.groupValues[1].trim(); if (name.isEmpty()) return null
+        return UltronAction.SendMessage(name, m.groupValues[2].trim().ifEmpty { null }, t.contains("whatsapp"))
+    }
+
+    private val alarmSetVerb = Regex("\\b(lagao|laga do|lagana|laga de|lagado|set|kar do|karo|bana do|rakh do|chahiye|laga dena)\\b")
+    private val alarmOffVerb = Regex("\\b(band|delete|cancel|hatao|hata do|dismiss|remove|off)\\b")
+    private val alarmShow = Regex("\\b(dikhao|batao|show|list|kitne|kaun se|dikha)\\b")
+
+    internal fun parseAlarm(t: String): UltronAction? {
+        if (t.contains("timer")) {
+            if (alarmOffVerb.containsMatchIn(t)) return null
+            return AlarmTime.timerSeconds(t)?.let { UltronAction.SetTimer(it) }
+        }
+        if (!Regex("\\balarms?\\b").containsMatchIn(t)) return null
+        if (alarmShow.containsMatchIn(t)) return UltronAction.ShowAlarms
+        if (alarmOffVerb.containsMatchIn(t)) return UltronAction.DismissAlarm
+        if (!alarmSetVerb.containsMatchIn(t)) return null
+        val p = AlarmTime.parse(t) ?: return null
+        return UltronAction.SetAlarm(p.hour, p.minute, p.ambiguous, p.inMinutes, p.days, p.tomorrow)
+    }
 
     private const val NUM = "([+\\d][\\d\\s-]{4,18})"
     private val callEnd = Regex("^(?:call\\s+(?:cancel|end|kaat|kat|band)(?:\\s+(?:karo|kar do|do))?|(?:call|phone)\\s+(?:cut|kaat)\\s*(?:karo|kar do|do)?|hang up|call kaat do)$")

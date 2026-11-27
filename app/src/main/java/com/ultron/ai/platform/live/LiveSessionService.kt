@@ -82,6 +82,29 @@ class LiveSessionService : Service() {
         }
         if (extras == null) extras = scope.launch {
             // Wake word heard: special activation animation on the edge light.
+            launch {
+                // Phone call = highest priority: ULTRON goes completely silent (mic released, TTS stopped) and returns to its previous mode after the call.
+                val silence = com.ultron.ai.domain.live.CallSilence()
+                val audio = getSystemService(android.media.AudioManager::class.java)
+                val tm = getSystemService(android.telephony.TelephonyManager::class.java)
+                while (true) {
+                    delay(1000)
+                    val st = engine.state.value
+                    val phoneIdle = try {
+                        if (androidx.core.content.ContextCompat.checkSelfPermission(this@LiveSessionService, android.Manifest.permission.READ_PHONE_STATE) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+                            @Suppress("DEPRECATION") tm.callState == android.telephony.TelephonyManager.CALL_STATE_IDLE else true
+                    } catch (_: Exception) { true }
+                    // Without phone-state permission the audio mode is the signal (IN_CALL / RINGTONE are phone-call modes only).
+                    val modeCall = audio != null && (audio.mode == android.media.AudioManager.MODE_IN_CALL || audio.mode == android.media.AudioManager.MODE_RINGTONE)
+                    val inCall = !phoneIdle || modeCall
+                    if (silence.inCallSilence && st == LiveState.STOPPED) silence.userStopped() // user stopped ULTRON during the call: never auto-resume
+                    when (silence.onCallState(inCall, st != LiveState.STOPPED && st != LiveState.PAUSED)) {
+                        com.ultron.ai.domain.live.CallSilenceAction.PAUSE -> { (application as UltronApp).container.tts.stop(); engine.pause() }
+                        com.ultron.ai.domain.live.CallSilenceAction.RESUME -> { promote(engine.state.value); engine.start() }
+                        else -> {}
+                    }
+                }
+            }
             launch { engine.wakeEvents.collect { if (overlayWanted) overlay.flash() } }
             // The user may grant "Display over other apps" (or the OEM may drop the window) while live: re-check cheaply.
             launch { while (true) { delay(3000); val st = engine.state.value; if (st != LiveState.STOPPED && overlayWanted && !overlay.isShowing) updateOverlay(st) } }

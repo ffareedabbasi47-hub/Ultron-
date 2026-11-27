@@ -25,6 +25,14 @@ object ActionValidator {
         is UltronAction.OpenSystemSettings -> Validation.OK
         is UltronAction.SetToggle -> Validation.OK
         is UltronAction.AdjustVolume -> Validation.OK
+        is UltronAction.SetAlarm ->
+            if (action.hour !in 0..23 || action.minute !in 0..59 || (action.inMinutes != null && action.inMinutes !in 1..1440)) Validation.no("Alarm ka time sahi nahi hai.") else Validation.OK
+        is UltronAction.SetTimer -> if (action.seconds !in 1..86400) Validation.no("Timer 1 second se 24 ghante ke beech ka hona chahiye.") else Validation.OK
+        UltronAction.ShowAlarms -> Validation.OK
+        UltronAction.DismissAlarm -> Validation.OK
+        is UltronAction.SendMessage ->
+            if (action.name.isBlank() || action.name.length > 40) Validation.no("Contact ka naam 1-40 akshar ka hona chahiye.")
+            else if (action.body != null && action.body.length > 600) Validation.no("Message bahut lamba hai (600 akshar tak).") else Validation.OK
         is UltronAction.CallContact ->
             if (action.name.isBlank() || action.name.length > 40) Validation.no("Contact ka naam 1-40 akshar ka hona chahiye.") else Validation.OK
         is UltronAction.CallNumber ->

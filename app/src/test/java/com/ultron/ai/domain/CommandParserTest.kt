@@ -203,3 +203,44 @@ class YouTubePickTest {
         assertEquals(UltronAction.SetToggle(ToggleTarget.WIFI, true), CommandParser.parse("wifi on karo"))
     }
 }
+
+class AlarmMessageTest {
+    private fun t(s: String) = CommandParser.parse(s)
+    @org.junit.Test fun alarms() {
+        assertEquals(UltronAction.SetAlarm(6, 0, false, null, emptyList(), false), t("subah 6 baje alarm laga do"))
+        assertEquals(UltronAction.SetAlarm(0, 0, false, 10, emptyList(), false), t("10 minute baad alarm lagao"))
+        assertEquals(UltronAction.SetAlarm(7, 30, true, null, emptyList(), true), t("kal 7:30 baje alarm lagana"))
+        assertEquals(UltronAction.SetAlarm(17, 5, false, null, emptyList(), false), t("shaam 5:05 baje alarm lagao"))
+        assertEquals(UltronAction.SetAlarm(18, 0, false, null, emptyList(), false), t("alarm 18:00 baje set karo"))
+        assertEquals(UltronAction.SetAlarm(6, 30, false, null, (1..7).toList(), false), t("roz subah 6:30 baje alarm lagao"))
+        assertEquals(UltronAction.SetAlarm(2, 0, false, null, emptyList(), false), t("raat 2 baje alarm lagao"))
+        assertEquals(UltronAction.SetTimer(300), t("5 minute ka timer lagao"))
+        assertEquals(UltronAction.DismissAlarm, t("mera alarm band karo"))
+        assertEquals(UltronAction.DismissAlarm, t("alarm delete karo"))
+        assertEquals(UltronAction.ShowAlarms, t("saare alarms dikhao"))
+        assertEquals(UltronAction.ShowAlarms, t("kal ke alarms batao"))
+    }
+    @org.junit.Test fun messages() {
+        assertEquals(UltronAction.SendMessage("rahul", "main ghar aa raha hoon", false), t("Rahul ko message bhejo ki main ghar aa raha hoon"))
+        assertEquals(UltronAction.SendMessage("mom", null, false), t("mom ko sms bhejo"))
+        assertEquals(UltronAction.SendMessage("papa", "kal milte hain", true), t("whatsapp par papa ko message bhejo ki kal milte hain"))
+        assertEquals(UltronAction.SendMessage("rahul", "late ho jaunga", false), t("send message to rahul saying late ho jaunga"))
+        assertEquals(UltronAction.CallContact("papa"), t("papa ko call karo"))
+    }
+    @org.junit.Test fun memoryPhrase() {
+        assertEquals(UltronAction.Remember("mujhe black aur gold theme pasand hai"), t("yaad rakhna ki mujhe black aur gold theme pasand hai"))
+    }
+    @org.junit.Test fun callSilence() {
+        val c = com.ultron.ai.domain.live.CallSilence()
+        assertEquals(com.ultron.ai.domain.live.CallSilenceAction.PAUSE, c.onCallState(true, true))
+        assertEquals(com.ultron.ai.domain.live.CallSilenceAction.NONE, c.onCallState(true, false))
+        assertEquals(com.ultron.ai.domain.live.CallSilenceAction.RESUME, c.onCallState(false, false))
+        assertEquals(com.ultron.ai.domain.live.CallSilenceAction.NONE, c.onCallState(false, false))
+        // was NOT listening before the call -> nothing to resume
+        assertEquals(com.ultron.ai.domain.live.CallSilenceAction.NONE, c.onCallState(true, false))
+        assertEquals(com.ultron.ai.domain.live.CallSilenceAction.NONE, c.onCallState(false, false))
+        // user stops ULTRON during a call -> no auto resume
+        c.onCallState(true, true); c.userStopped()
+        assertEquals(com.ultron.ai.domain.live.CallSilenceAction.NONE, c.onCallState(false, false))
+    }
+}

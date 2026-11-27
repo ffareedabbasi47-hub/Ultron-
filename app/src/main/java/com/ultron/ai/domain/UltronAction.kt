@@ -11,6 +11,13 @@ sealed interface UltronAction {
     data class CallNumber(val number: String) : UltronAction
     data object OpenDialer : UltronAction
     data object EndCall : UltronAction
+    /** [inMinutes] set = relative ("10 minute baad"); else clock time ([ambiguous] = AM/PM not said, ask). Days use Calendar numbers. */
+    data class SetAlarm(val hour: Int, val minute: Int, val ambiguous: Boolean, val inMinutes: Int?, val days: List<Int>, val tomorrow: Boolean) : UltronAction
+    data class SetTimer(val seconds: Int) : UltronAction
+    data object ShowAlarms : UltronAction
+    data object DismissAlarm : UltronAction
+    /** Message to a contact (SMS, or WhatsApp). Always previewed and confirmed before sending. */
+    data class SendMessage(val name: String, val body: String?, val whatsapp: Boolean) : UltronAction
     data class AdjustVolume(val up: Boolean) : UltronAction
     /** [percent] = absolute 1..100, or null with [delta] (+/- percentage points). */
     data class SetBrightness(val percent: Int?, val delta: Int = 0) : UltronAction

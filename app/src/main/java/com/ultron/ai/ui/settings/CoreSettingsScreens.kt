@@ -299,12 +299,12 @@ fun PrivacyScreen(settings: UltronSettings, onBack: () -> Unit) {
         SwitchRow("Screenshot/recents block", "Off (default): screenshot aur recording chalte hain. On: ULTRON ki screen ka screenshot/recording nahi banta aur recent apps me preview chhupta hai.", settings.secureScreen) { v -> scope.launch { c.settings.update { it.copy(secureScreen = v) } } }
 
         SectionLabel("Calling")
-        val callPerms = arrayOf(Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE, Manifest.permission.ANSWER_PHONE_CALLS)
+        val callPerms = arrayOf(Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE, Manifest.permission.ANSWER_PHONE_CALLS, Manifest.permission.SEND_SMS)
         var callGranted by remember { mutableStateOf(callPerms.map { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) }
         val callLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) {
             callGranted = callPerms.map { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
         }
-        PermRow("Calling permissions", if (callGranted.all { it }) "Sab allowed" else "Kuch baaki", if (callGranted.all { it }) UltronColors.Green else UltronColors.Gold, "Contacts (naam dhoondhne), Call (seedha call), Phone state (call lagi ya nahi check) aur call kaatna. Har call se pehle ULTRON aapse awaaz me haan/nahi poochta. Kuch deny ho to dialer khulta hai aur ULTRON bolta hai ki call abhi shuru nahi hui.")
+        PermRow("Calling permissions", if (callGranted.all { it }) "Sab allowed" else "Kuch baaki", if (callGranted.all { it }) UltronColors.Green else UltronColors.Gold, "Contacts (naam dhoondhne), Call (seedha call), Phone state (call lagi ya nahi + call ke dauran ULTRON chup), call kaatna aur SMS bhejna. Har call se pehle ULTRON aapse awaaz me haan/nahi poochta. Kuch deny ho to dialer khulta hai aur ULTRON bolta hai ki call abhi shuru nahi hui.")
         if (!callGranted.all { it }) Button(onClick = { callLauncher.launch(callPerms) }) { Text("Calling permissions do") }
 
         SectionLabel("Screenshot aur screen recording")

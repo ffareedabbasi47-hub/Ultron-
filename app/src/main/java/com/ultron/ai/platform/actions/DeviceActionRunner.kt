@@ -48,6 +48,11 @@ class DeviceActionRunner(
         is UltronAction.YouTubeSearch -> youTubePlay(action.query)
         is UltronAction.OpenSystemSettings -> openSettings(action.target)
         is UltronAction.SetToggle -> setToggle(action.target, action.on)
+        is UltronAction.SetAlarm -> setAlarm(action)
+        is UltronAction.SetTimer -> setTimer(action.seconds)
+        UltronAction.ShowAlarms -> showAlarms()
+        UltronAction.DismissAlarm -> dismissAlarm()
+        is UltronAction.SendMessage -> sendMessage(action.name, action.body, action.whatsapp)
         is UltronAction.CallContact -> callContact(action.name)
         is UltronAction.CallNumber -> placeCall(action.number, action.number)
         UltronAction.OpenDialer -> openDialer()
@@ -192,15 +197,26 @@ class DeviceActionRunner(
         out
     }
 
-    private suspend fun callContact(name: String): ActionResult {
+    private sealed interface Resolved {
+        class Ok(val name: String, val number: String) : Resolved
+        class Fail(val result: ActionResult) : Resolved
+    }
+
+    /** ONE contact-resolution engine for calls and messages. Never picks between different people or numbers. */
+    private suspend fun resolve(name: String, did: String): Resolved {
         if (!granted(android.Manifest.permission.READ_CONTACTS))
-            return ActionResult(false, "Contacts dekhne ki permission nahi hai, isliye \"$name\" ko dhoondh nahi sakta. Menu → Privacy aur Permissions me \"Calling permissions\" allow karo. Tab tak number bolke call kara sakte ho, ya dialer kholo bolo.")
+            return Resolved.Fail(ActionResult(false, "Contacts dekhne ki permission nahi hai, isliye \"$name\" ko dhoondh nahi sakta. Menu → Privacy aur Permissions me \"Calling permissions\" allow karo."))
         return when (val m = com.ultron.ai.domain.ContactMatcher.find(name, contactEntries(name))) {
-            com.ultron.ai.domain.ContactMatch.None -> ActionResult(false, "\"$name\" naam ka koi contact nahi mila. Kisi ko call nahi kiya.")
-            is com.ultron.ai.domain.ContactMatch.Ambiguous -> ActionResult(false, "\"$name\" naam ke kai contacts hain: ${m.names.joinToString(", ")}. Poora naam bolo. Maine kisi ko call nahi kiya.")
-            is com.ultron.ai.domain.ContactMatch.MultiNumber -> ActionResult(false, "${m.name} ke kai alag numbers hain (${m.numbers.joinToString(", ") { it.takeLast(4).padStart(5, '*') }}). Kaun sa number chahiye? Number bolke call karo. Kisi ko call nahi kiya.")
-            is com.ultron.ai.domain.ContactMatch.One -> placeCall(m.number, m.name)
+            com.ultron.ai.domain.ContactMatch.None -> Resolved.Fail(ActionResult(false, "\"$name\" naam ka koi contact nahi mila. Kisi ko $did nahi kiya."))
+            is com.ultron.ai.domain.ContactMatch.Ambiguous -> Resolved.Fail(ActionResult(false, "\"$name\" naam ke kai contacts hain: ${m.names.joinToString(", ")}. Poora naam bolo. Maine kisi ko $did nahi kiya."))
+            is com.ultron.ai.domain.ContactMatch.MultiNumber -> Resolved.Fail(ActionResult(false, "${m.name} ke kai alag numbers hain (${m.numbers.joinToString(", ") { it.takeLast(4).padStart(5, '*') }}). Kaun sa number chahiye? Kisi ko $did nahi kiya."))
+            is com.ultron.ai.domain.ContactMatch.One -> Resolved.Ok(m.name, m.number)
         }
+    }
+
+    private suspend fun callContact(name: String): ActionResult = when (val r = resolve(name, "call")) {
+        is Resolved.Fail -> r.result
+        is Resolved.Ok -> placeCall(r.number, r.name)
     }
 
     private suspend fun placeCall(number: String, label: String): ActionResult {
@@ -233,6 +249,139 @@ class DeviceActionRunner(
             @Suppress("DEPRECATION") val ok = tm.endCall()
             if (ok) ActionResult(true, "Call kaat di.") else ActionResult(false, "Call kaatne ki koshish ki par Android ne nahi kaati.")
         } catch (e: SecurityException) { ActionResult(false, "Android ne call kaatne nahi di.") }
+    }
+
+    // ---- alarms & timers (system Clock app: survives reboot, uses the phone's timezone) -------------
+
+    private fun fmt(ms: Long) = java.text.SimpleDateFormat("h:mm a, EEE d MMM", java.util.Locale.getDefault()).format(java.util.Date(ms))
+    private fun nextAlarmMs(): Long? = context.getSystemService(android.app.AlarmManager::class.java)?.nextAlarmClock?.triggerTime
+
+    private suspend fun setAlarm(a: UltronAction.SetAlarm): ActionResult {
+        val now = java.util.Calendar.getInstance()
+        var h = a.hour; val m = a.minute
+        if (a.inMinutes != null) { now.add(java.util.Calendar.MINUTE, a.inMinutes); h = now.get(java.util.Calendar.HOUR_OF_DAY); val mm = now.get(java.util.Calendar.MINUTE); return scheduleAlarm(h, mm, emptyList(), null) }
+        if (a.ambiguous) {
+            // AM/PM not said: pick the next occurrence and ASK before setting.
+            fun next(hh: Int): Long = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, hh); set(java.util.Calendar.MINUTE, m); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0); if (timeInMillis <= System.currentTimeMillis()) add(java.util.Calendar.DAY_OF_YEAR, 1) }.timeInMillis
+            val am = a.hour % 12; val pm = a.hour % 12 + 12
+            h = if (next(am) <= next(pm)) am else pm
+            val word = if (h < 12) "subah (AM)" else "shaam/dopahar (PM)"
+            val yes = broker.ask("$h baje ${"%02d".format(m)} ka matlab $word? ${fmt(next(h))} par alarm lagaun? Haan ya nahi.", { x -> val k = tts.beginSpeech(0L); tts.enqueue(k, x); tts.endSpeech(k) })
+            if (!yes) return ActionResult(false, "Theek hai, alarm nahi lagaya. AM ya PM saath bolo, jaise \"subah 6 baje\".")
+        }
+        val t = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, h); set(java.util.Calendar.MINUTE, m); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0) }
+        val todayUpcoming = t.timeInMillis > System.currentTimeMillis()
+        if (a.tomorrow && todayUpcoming && a.days.isEmpty())
+            return ActionResult(false, "Android ka alarm request sirf time leta hai, date nahi: ${"%d:%02d".format(h, m)} abhi aaj hi baj jayega. Isliye 'kal' wala alarm nahi lagaya. Aaj raat ko bol do, ya roz/kisi din ke repeat ke saath lagao.")
+        return scheduleAlarm(h, m, a.days, null)
+    }
+
+    private suspend fun scheduleAlarm(h: Int, m: Int, days: List<Int>, label: String?): ActionResult {
+        val target = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, h); set(java.util.Calendar.MINUTE, m); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0); if (timeInMillis <= System.currentTimeMillis()) add(java.util.Calendar.DAY_OF_YEAR, 1) }.timeInMillis
+        val i = Intent(android.provider.AlarmClock.ACTION_SET_ALARM).putExtra(android.provider.AlarmClock.EXTRA_HOUR, h).putExtra(android.provider.AlarmClock.EXTRA_MINUTES, m)
+            .putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, label ?: "ULTRON").putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, true)
+        if (days.isNotEmpty()) i.putIntegerArrayListExtra(android.provider.AlarmClock.EXTRA_DAYS, ArrayList(days))
+        val direct = BackgroundLaunch.canStartDirectly(context)
+        val r = try { BackgroundLaunch.launch(context, i, "Alarm ${"%d:%02d".format(h, m)}", "") } catch (e: Exception) { return ActionResult(false, "Is phone par Clock/alarm app nahi mila.") }
+        if (!r.success || !direct) return if (!direct) ActionResult(true, "Background se Android alarm screen nahi kholne deta; notification aayi hai use tap karo. Alarm abhi set NAHI hua.") else r
+        delay(1500)
+        val next = nextAlarmMs()
+        val rep = if (days.isNotEmpty()) " (repeat ke saath)" else ""
+        return when {
+            next != null && kotlin.math.abs(next - target) < 90_000 -> ActionResult(true, "Alarm ${fmt(target)} ke liye set ho gaya$rep. Android ne agla alarm yahi dikhaya.")
+            next == null -> ActionResult(false, "Alarm set karne ka request bheja par Android me koi alarm dikh nahi raha. Clock app ne accept nahi kiya; set NAHI hua.")
+            else -> ActionResult(true, "Alarm ${fmt(target)} ka request Clock app ko bhej diya$rep. Pakka verify nahi kar sakta, kyunki aapka ek aur alarm (${fmt(next)}) pehle baj raha hai. Clock app me dekh lo.")
+        }
+    }
+
+    private suspend fun setTimer(sec: Int): ActionResult {
+        val i = Intent(android.provider.AlarmClock.ACTION_SET_TIMER).putExtra(android.provider.AlarmClock.EXTRA_LENGTH, sec).putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, "ULTRON").putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, true)
+        val direct = BackgroundLaunch.canStartDirectly(context)
+        val r = try { BackgroundLaunch.launch(context, i, "Timer", "") } catch (e: Exception) { return ActionResult(false, "Is phone par Clock/timer app nahi mila.") }
+        if (!r.success) return r
+        if (!direct) return ActionResult(true, "Background se timer screen nahi khul sakti; notification aayi hai use tap karo. Timer abhi start NAHI hua.")
+        return ActionResult(true, "${if (sec % 60 == 0) "${sec / 60} minute" else "$sec second"} ka timer Clock app ko bhej diya. Android timers ko verify karne ka API nahi deta, isliye pakka nahi keh sakta ki chal pada; Clock app me dekh lo.")
+    }
+
+    private suspend fun showAlarms(): ActionResult {
+        val next = nextAlarmMs()
+        val r = try { BackgroundLaunch.launch(context, Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS), "Alarms", "") } catch (e: Exception) { return ActionResult(false, "Clock app nahi mila.") }
+        val head = if (next != null) "Agla alarm ${fmt(next)} par hai." else "Android ke hisaab se koi alarm set nahi hai."
+        return ActionResult(r.success, "$head Saare alarms ki list Clock app me dikhti hai (Android dusre ke alarms padhne nahi deta), wo khol di.")
+    }
+
+    private suspend fun dismissAlarm(): ActionResult {
+        val before = nextAlarmMs() ?: return ActionResult(false, "Koi alarm set nahi dikh raha, kuch band nahi kiya.")
+        val yes = broker.ask("Agla alarm ${fmt(before)} wala band karun? Haan ya nahi.", { x -> val k = tts.beginSpeech(0L); tts.enqueue(k, x); tts.endSpeech(k) })
+        if (!yes) return ActionResult(false, "Theek hai, alarm nahi hataya.")
+        val i = Intent(android.provider.AlarmClock.ACTION_DISMISS_ALARM).putExtra("android.intent.extra.alarm.SEARCH_MODE", "android.next").putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, true)
+        val r = try { BackgroundLaunch.launch(context, i, "Alarm band", "") } catch (e: Exception) { return ActionResult(false, "Clock app alarm band karne ka request support nahi karta.") }
+        if (!r.success || !BackgroundLaunch.canStartDirectly(context)) return ActionResult(false, "Alarm abhi band NAHI hua (background se Android screen nahi kholne deta).")
+        delay(1500)
+        val after = nextAlarmMs()
+        return if (after != before) ActionResult(true, "Alarm band ho gaya (Android ka agla alarm badal gaya).") else ActionResult(false, "Band karne ka request bheja par Android ab bhi wahi alarm dikha raha hai. Clock app support na kare to wahi se band karo.")
+    }
+
+    // ---- messages (SMS / WhatsApp) -----------------------------------------------------------
+
+    private suspend fun sendMessage(name: String, body: String?, whatsapp: Boolean): ActionResult {
+        if (body.isNullOrBlank()) return ActionResult(false, "Message kya bhejna hai? Ek saath bolo: \"$name ko message bhejo ki main aa raha hoon\". Kuch bheja nahi.")
+        val c = when (val r = resolve(name, "message")) { is Resolved.Fail -> return r.result; is Resolved.Ok -> r }
+        val via = if (whatsapp) "WhatsApp par" else "SMS"
+        val yes = broker.ask("${c.name} (…${c.number.takeLast(4)}) ko $via ye message bhejun: \"$body\". Bhej doon? Haan ya nahi.", { x -> val k = tts.beginSpeech(0L); tts.enqueue(k, x); tts.endSpeech(k) })
+        if (!yes) return ActionResult(false, "Theek hai, message nahi bheja.")
+        return if (whatsapp) whatsappSend(c.name, c.number, body) else smsSend(c.name, c.number, body)
+    }
+
+    private suspend fun smsSend(name: String, number: String, body: String): ActionResult {
+        if (granted(android.Manifest.permission.SEND_SMS)) {
+            val sms = if (Build.VERSION.SDK_INT >= 31) context.getSystemService(android.telephony.SmsManager::class.java) else @Suppress("DEPRECATION") android.telephony.SmsManager.getDefault()
+            val parts = sms.divideMessage(body)
+            val action = "com.ultron.ai.SMS_SENT_" + System.nanoTime()
+            val results = java.util.concurrent.CopyOnWriteArrayList<Int>()
+            val done = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val rx = object : android.content.BroadcastReceiver() {
+                override fun onReceive(c: Context, i: Intent) { results.add(resultCode); if (results.size >= parts.size) done.complete(Unit) }
+            }
+            androidx.core.content.ContextCompat.registerReceiver(context, rx, android.content.IntentFilter(action), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
+            try {
+                val sent = ArrayList<android.app.PendingIntent>()
+                for (k in parts.indices) sent.add(android.app.PendingIntent.getBroadcast(context, k, Intent(action).setPackage(context.packageName), android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_ONE_SHOT))
+                sms.sendMultipartTextMessage(number, null, parts, sent, null)
+                val finished = kotlinx.coroutines.withTimeoutOrNull(20_000) { done.await(); true } == true
+                return when {
+                    !finished -> ActionResult(false, "SMS ka result 20 second me nahi mila. Bheja gaya ya nahi, pakka nahi keh sakta; Messages app me check karo.")
+                    results.all { it == android.app.Activity.RESULT_OK } -> ActionResult(true, "${name} ko SMS bhej diya (phone ne network ko de diya). Samne wale tak pahunchi ya nahi, ye Android yahan nahi batata.")
+                    else -> ActionResult(false, "SMS nahi gaya (error ${results.firstOrNull { it != android.app.Activity.RESULT_OK }}). Balance/SIM/network check karo.")
+                }
+            } catch (e: SecurityException) { return ActionResult(false, "Android ne SMS bhejne ki permission nahi di.") }
+            catch (e: Exception) { return ActionResult(false, "SMS bhejte waqt error aaya.") }
+            finally { try { context.unregisterReceiver(rx) } catch (_: Exception) {} }
+        }
+        // No SEND_SMS permission: official compose screen, then (only if the user enabled Accessibility) press Send.
+        val i = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(number))).putExtra("sms_body", body)
+        val direct = BackgroundLaunch.canStartDirectly(context)
+        val r = try { BackgroundLaunch.launch(context, i, "SMS to $name", "") } catch (e: Exception) { return ActionResult(false, "SMS app nahi mila.") }
+        if (!r.success || !direct) return if (!direct) ActionResult(true, "Background se SMS screen nahi khul sakti; notification tap karo. Message abhi bheja NAHI gaya.") else r
+        if (!screen.isEnabled()) return ActionResult(true, "SMS app me ${name} ka message taiyar kar diya. SEND_SMS permission aur Accessibility dono off hain, isliye Send aapko dabana hoga. Abhi bheja NAHI gaya.")
+        delay(2000)
+        return if (screen.clickLabel("Send")) ActionResult(true, "SMS app me Send dabaya. Message gaya ya nahi, ye main verify nahi kar sakta; Messages me check karo.") else ActionResult(false, "Message taiyar hai par Send button nahi mila. Aap dabao. Abhi bheja NAHI gaya.")
+    }
+
+    private suspend fun whatsappSend(name: String, number: String, body: String): ActionResult {
+        var digits = number.filter { it.isDigit() }
+        if (!number.startsWith("+") && digits.length == 10 && java.util.Locale.getDefault().country == "IN") digits = "91$digits"
+        val uri = Uri.parse("https://wa.me/$digits?text=" + Uri.encode(body))
+        val direct = BackgroundLaunch.canStartDirectly(context)
+        var r: ActionResult? = null
+        for (pkg in listOf("com.whatsapp", "com.whatsapp.w4b")) {
+            try { r = BackgroundLaunch.launch(context, Intent(Intent.ACTION_VIEW, uri).setPackage(pkg), "WhatsApp: $name", ""); break } catch (_: ActivityNotFoundException) {} catch (_: Exception) {}
+        }
+        if (r == null) return ActionResult(false, "WhatsApp is phone par nahi mila. Message nahi bheja.")
+        if (!r.success || !direct) return if (!direct) ActionResult(true, "Background se WhatsApp nahi khul sakta; notification tap karo. Message abhi bheja NAHI gaya.") else r
+        if (!screen.isEnabled()) return ActionResult(true, "WhatsApp me ${name} ka message taiyar kar diya. Accessibility off hai, isliye Send aapko dabana hoga. Abhi bheja NAHI gaya.")
+        delay(3000)
+        return if (screen.clickLabel("Send")) ActionResult(true, "WhatsApp me Send dabaya. Message gaya ya nahi, WhatsApp ye nahi batata; chat me tick check karo.") else ActionResult(false, "Message taiyar hai par Send button nahi mila. Aap dabao. Abhi bheja NAHI gaya.")
     }
 
     // ---- volume / brightness / DND / media ---------------------------------------------------
@@ -443,9 +592,15 @@ class DeviceActionRunner(
     }
 
     private suspend fun remember(text: String): ActionResult {
+        val clean = text.trim()
+        val all = memory.all()
+        if (all.any { it.text.trim().equals(clean, ignoreCase = true) }) return ActionResult(true, "Boss, ye baat pehle se aapki memories mein save hai.")
         val t = System.currentTimeMillis()
-        memory.insert(MemoryEntity(text = text, source = "command", createdAt = t, updatedAt = t))
-        return ActionResult(true, "Yaadein mein save kar liya: \"$text\". Aap use kabhi bhi edit ya delete kar sakte ho.")
+        val id = try { memory.insert(MemoryEntity(text = clean, source = "command", createdAt = t, updatedAt = t)) } catch (e: Exception) { -1L }
+        // Only claim success when the row can be read back from the database.
+        val saved = id > 0 && memory.all().any { it.id == id && it.text == clean }
+        return if (saved) ActionResult(true, "Boss, ye baat aapki memories mein save kar di hai. Aap use kabhi bhi Memories me edit ya delete kar sakte ho.")
+        else ActionResult(false, "Memory save nahi ho payi. Database me likhna fail hua.")
     }
 }
 
