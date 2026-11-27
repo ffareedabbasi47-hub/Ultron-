@@ -186,12 +186,11 @@ class DeviceActionRunner(
 
     private suspend fun contactEntries(query: String): List<com.ultron.ai.domain.ContactEntry> = withContext(Dispatchers.IO) {
         val out = ArrayList<com.ultron.ai.domain.ContactEntry>()
-        val P = android.provider.ContactsContract.CommonDataKinds.Phone
         val first = query.trim().split(Regex("\\s+")).firstOrNull().orEmpty()
         try {
-            context.contentResolver.query(P.CONTENT_URI, arrayOf(P.CONTACT_ID, P.DISPLAY_NAME, P.NUMBER, P.TYPE),
-                "${P.DISPLAY_NAME} LIKE ?", arrayOf("%$first%"), null)?.use { c ->
-                while (c.moveToNext() && out.size < 200) out.add(com.ultron.ai.domain.ContactEntry(c.getString(0) ?: "", c.getString(1) ?: "", c.getString(2) ?: "", c.getInt(3) == P.TYPE_MOBILE))
+            context.contentResolver.query(android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI, arrayOf(android.provider.ContactsContract.CommonDataKinds.Phone.CONTACT_ID, android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER, android.provider.ContactsContract.CommonDataKinds.Phone.TYPE),
+                "${android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?", arrayOf("%$first%"), null)?.use { c ->
+                while (c.moveToNext() && out.size < 200) out.add(com.ultron.ai.domain.ContactEntry(c.getString(0) ?: "", c.getString(1) ?: "", c.getString(2) ?: "", c.getInt(3) == android.provider.ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE))
             }
         } catch (_: SecurityException) {}
         out
@@ -470,21 +469,19 @@ class DeviceActionRunner(
 
     private fun panel(action: String) = if (Build.VERSION.SDK_INT >= 29) Intent(action) else null
 
-    private fun toggleIntents(t: ToggleTarget): List<Intent> = listOfNotNull(
-        *when (t) {
-            ToggleTarget.WIFI -> arrayOf(panel(Settings.Panel.ACTION_WIFI), Intent(Settings.ACTION_WIFI_SETTINGS))
-            ToggleTarget.HOTSPOT -> arrayOf(
-                Intent().setClassName("com.android.settings", "com.android.settings.TetherSettings"),
-                Intent("android.settings.TETHER_SETTINGS"), Intent(Settings.ACTION_WIRELESS_SETTINGS),
-            )
-            ToggleTarget.BLUETOOTH -> arrayOf(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
-            ToggleTarget.AIRPLANE -> arrayOf(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS))
-            ToggleTarget.MOBILE_DATA -> arrayOf(panel(Settings.Panel.ACTION_INTERNET_CONNECTIVITY), Intent(Settings.ACTION_WIRELESS_SETTINGS))
-            ToggleTarget.LOCATION -> arrayOf(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
-            ToggleTarget.NFC -> arrayOf(Intent(Settings.ACTION_NFC_SETTINGS))
-            ToggleTarget.TORCH -> emptyArray()
-        },
-    )
+    private fun toggleIntents(t: ToggleTarget): List<Intent> = when (t) {
+        ToggleTarget.WIFI -> listOfNotNull(panel(Settings.Panel.ACTION_WIFI), Intent(Settings.ACTION_WIFI_SETTINGS))
+        ToggleTarget.HOTSPOT -> listOf(
+            Intent().setClassName("com.android.settings", "com.android.settings.TetherSettings"),
+            Intent("android.settings.TETHER_SETTINGS"), Intent(Settings.ACTION_WIRELESS_SETTINGS),
+        )
+        ToggleTarget.BLUETOOTH -> listOf(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+        ToggleTarget.AIRPLANE -> listOf(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS))
+        ToggleTarget.MOBILE_DATA -> listOfNotNull(panel(Settings.Panel.ACTION_INTERNET_CONNECTIVITY), Intent(Settings.ACTION_WIRELESS_SETTINGS))
+        ToggleTarget.LOCATION -> listOf(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+        ToggleTarget.NFC -> listOf(Intent(Settings.ACTION_NFC_SETTINGS))
+        ToggleTarget.TORCH -> emptyList()
+    }
 
     private fun label(t: ToggleTarget) = when (t) {
         ToggleTarget.WIFI -> "Wi-Fi"; ToggleTarget.HOTSPOT -> "Hotspot"; ToggleTarget.BLUETOOTH -> "Bluetooth"
