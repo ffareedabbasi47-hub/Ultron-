@@ -246,7 +246,8 @@ fun HomeScreen(
         avatarId = settings.avatarId, state = state,
         lowPerformance = settings.lowPerformance, reducedMotion = settings.reducedMotion,
         onFailed = { m -> avatarFailed = true; ocrNote = "3D avatar load nahi hua (" + m + "). 2D core dikha raha hoon. Avatar screen se dusra model chuno." }, onClick = ::onMicTap,
-        modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().fillMaxHeight(0.66f).statusBarsPadding().padding(top = 56.dp),
+        // Whole home area (below the header, down to the nav bar): head to feet stay in view; glass cards sit in front of the legs like the reference.
+        modifier = Modifier.align(Alignment.TopCenter).fillMaxSize().statusBarsPadding().padding(top = 60.dp),
     )
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp)) {
         TopBar(onMenu = onMenu, onBell = { onNavigate(Routes.NOTIFS) }, onAvatar = { onNavigate(Routes.GENERAL) })
@@ -254,10 +255,10 @@ fun HomeScreen(
         // Greeting + real reminder card (same slot as the reference's status card)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
-                Text(greeting() + ",", style = MaterialTheme.typography.headlineMedium.copy(fontSize = 22.sp), color = UltronColors.TextLo, fontWeight = FontWeight.Medium)
+                Text(greeting() + ",", style = MaterialTheme.typography.headlineMedium.copy(fontSize = 17.sp), color = UltronColors.TextLo, fontWeight = FontWeight.Medium)
                 Text(
                     settings.userName.ifBlank { "ULTRON" },
-                    style = MaterialTheme.typography.headlineMedium.copy(fontSize = 36.sp, fontWeight = FontWeight.Bold),
+                    style = MaterialTheme.typography.headlineMedium.copy(fontSize = 27.sp, fontWeight = FontWeight.SemiBold),
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }

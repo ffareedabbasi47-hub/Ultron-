@@ -27,6 +27,7 @@ enum class ResponseStyle(val wire: String, val label: String) {
 
 enum class ThemeVariant(val label: String) {
     NAVY("Midnight navy"), PURPLE("Deep purple"), CRIMSON("Ultron red"), EMERALD("Emerald"), GOLD("Gold"), ICE("Ice blue"), AMOLED("AMOLED black"),
+    DEEPSPACE("Deep space"), CYBER("Cyber blue"), AURORA("Aurora"), SILVER("Silver glass (light)"),
 }
 
 /** System font families only (no downloads, no licensing issues). */

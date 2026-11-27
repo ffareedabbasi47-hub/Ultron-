@@ -99,6 +99,8 @@ object LiveWire {
                         add(tool("phone_toggle", "Turn a phone switch on or off: wifi, hotspot, bluetooth, airplane, mobile_data, location, nfc or torch.", "name" to "wifi|hotspot|bluetooth|airplane|mobile_data|location|nfc|torch", "state" to "on or off"))
                         add(tool("set_reminder", "Set a reminder after some minutes.", "text" to "What to remind", "minutes" to "Delay in minutes as a number"))
                         add(tool("build_project", "Hand a coding job (website, web page, small app) to the background builder agent. Use when the user asks you to build or code something. Pass a clear one-sentence brief.", "brief" to "What to build, with key requirements"))
+                        add(tool("web_search", "Search the live web for current information, news or documentation. Use for anything recent or that you are not sure about. Answer ONLY from what it returns and say it came from the web.", "query" to "What to search for"))
+                        add(tool("my_capabilities", "Get the REAL list of what ULTRON can and cannot do right now on this phone (permissions, config). Call this for any question about your abilities and never claim abilities it does not list.", "topic" to "optional: whatsapp, calling, sms, web_search, wake or empty"))
                         add(tool("stop_listening", "End the voice call when the user says goodbye or asks you to stop."))
                     }
                 })

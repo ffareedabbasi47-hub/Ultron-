@@ -39,6 +39,8 @@
     <uses-feature android:glEsVersion="0x00030000" android:required="false" />
 
     <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
         <!-- Launchable apps (for "open <app>" by name) -->
         <intent>
             <action android:name="android.intent.action.MAIN" />

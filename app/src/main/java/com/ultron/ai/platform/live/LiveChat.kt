@@ -74,6 +74,14 @@ class LiveChat(
         }
     }
 
+    /** A local note (e.g. web sources) shown in the chat; stored once, marked local. */
+    fun addNote(text: String) {
+        scope.launch {
+            val cid = conversationId ?: engine.latestOrNew(ChatMode.CHAT).also { conversationId = it }
+            dao.insertMessage(MessageEntity(conversationId = cid, role = "assistant", text = text, createdAt = System.currentTimeMillis(), source = MessageEntity.SOURCE_LOCAL))
+        }
+    }
+
     override fun onEvent(heard: String?, said: String?, turnComplete: Boolean, interrupted: Boolean) {
         val out = synchronized(assembler) { assembler.feed(heard, said, turnComplete, interrupted) }
         val id = conversationId

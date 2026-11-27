@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
@@ -36,6 +39,7 @@ data class Palette(
     val primary: Color, val secondary: Color, val tertiary: Color,
     val textHi: Color, val textLo: Color,
     val glassTop: Color, val glassBottom: Color, val glassBorder: Color,
+    val light: Boolean = false,
 )
 
 object Palettes {
@@ -49,6 +53,11 @@ object Palettes {
         ThemeVariant.EMERALD -> Palette(Color(0xFF06100D), Color(0xFF0A1F19), Color(0xFF11302A), Color(0xFF1A443B), Color(0xFF34D399), Color(0xFF2DD4BF), Color(0xFF22D3EE), Color(0xFFEFFFF9), Color(0xFF9FC7BA), Color(0xFF1D4A40), Color(0xFF11302A), Color(0x40AFFFE0))
         ThemeVariant.GOLD -> Palette(Color(0xFF0F0B05), Color(0xFF1E1608), Color(0xFF2A200E), Color(0xFF3D2F14), Color(0xFFFBBF24), Color(0xFFF97316), Color(0xFFFDE68A), Color(0xFFFFF8E6), Color(0xFFCDBE9F), Color(0xFF47361A), Color(0xFF2A200E), Color(0x40FFE0AF))
         ThemeVariant.ICE -> Palette(Color(0xFF050B14), Color(0xFF0A1A2E), Color(0xFF0F2742), Color(0xFF183A5E), Color(0xFF38BDF8), Color(0xFF818CF8), Color(0xFF67E8F9), Color(0xFFF0F9FF), Color(0xFF9DB8D2), Color(0xFF1C4166), Color(0xFF0F2742), Color(0x40AFE0FF))
+        ThemeVariant.DEEPSPACE -> Palette(Color(0xFF04050F), Color(0xFF010208), Color(0xFF0C0F26), Color(0xFF171C40), Color(0xFF6C8CFF), Color(0xFF9B7BFF), Color(0xFF5EE0FF), Color(0xFFF2F4FF), Color(0xFFA8B0D0), Color(0xFF1B2146), Color(0xFF0C0F26), Color(0x40B4C4FF))
+        ThemeVariant.CYBER -> Palette(Color(0xFF021424), Color(0xFF010B15), Color(0xFF062A44), Color(0xFF0B3B5E), Color(0xFF00B7FF), Color(0xFF00E5C0), Color(0xFF7DF9FF), Color(0xFFEAF8FF), Color(0xFF9CC3D6), Color(0xFF0D4468), Color(0xFF062A44), Color(0x4000D5FF))
+        ThemeVariant.AURORA -> Palette(Color(0xFF04141A), Color(0xFF020B10), Color(0xFF0A2A2E), Color(0xFF123F44), Color(0xFF2EE6A6), Color(0xFF7C5CFF), Color(0xFF5EEAD4), Color(0xFFEFFFFB), Color(0xFF9CC9C0), Color(0xFF174A4F), Color(0xFF0A2A2E), Color(0x4062FFD0))
+        // Light theme: dark text (#0B1226 on #EAEFF7 is ~16:1, secondary #424B63 ~7:1), accents darkened for contrast.
+        ThemeVariant.SILVER -> Palette(Color(0xFFEAEFF7), Color(0xFFDDE4F0), Color(0xFFFFFFFF), Color(0xFFF2F5FB), Color(0xFF1E5FD8), Color(0xFF6B4FD8), Color(0xFF0A7E9B), Color(0xFF0B1226), Color(0xFF424B63), Color(0xFFFFFFFF), Color(0xFFE6ECF7), Color(0x40305090), light = true)
         ThemeVariant.AMOLED -> Palette(Color(0xFF000000), Color(0xFF000000), Color(0xFF0B0B12), Color(0xFF16161F), Color(0xFF4F9CFF), Color(0xFF8B5CF6), Color(0xFF35D6E8), hi, lo, Color(0xFF1A1A26), Color(0xFF0B0B12), border)
     }
 }
@@ -85,22 +94,18 @@ data class UiPrefs(val reducedMotion: Boolean = false, val lowPerformance: Boole
 
 val LocalUiPrefs = compositionLocalOf { UiPrefs() }
 
-private fun schemeFor(p: Palette) = darkColorScheme(
-    primary = p.primary,
-    onPrimary = Color.White,
-    secondary = p.tertiary,
-    onSecondary = Color.Black,
-    tertiary = p.secondary,
-    background = p.bg,
-    onBackground = p.textHi,
-    surface = p.surface,
-    onSurface = p.textHi,
-    surfaceVariant = p.raised,
-    onSurfaceVariant = p.textLo,
-    error = UltronColors.Red,
-    outline = p.glassBorder,
-    surfaceContainer = p.surface,
-    surfaceContainerHigh = p.raised,
+private fun onColor(c: Color) = if (c.luminance() > 0.5f) Color.Black else Color.White
+
+private fun schemeFor(p: Palette) = if (p.light) lightColorScheme(
+    primary = p.primary, onPrimary = onColor(p.primary), secondary = p.tertiary, onSecondary = onColor(p.tertiary),
+    tertiary = p.secondary, background = p.bg, onBackground = p.textHi, surface = p.surface, onSurface = p.textHi,
+    surfaceVariant = p.raised, onSurfaceVariant = p.textLo, error = UltronColors.Red, outline = p.glassBorder,
+    surfaceContainer = p.surface, surfaceContainerHigh = p.raised,
+) else darkColorScheme(
+    primary = p.primary, onPrimary = onColor(p.primary), secondary = p.tertiary, onSecondary = onColor(p.tertiary),
+    tertiary = p.secondary, background = p.bg, onBackground = p.textHi, surface = p.surface, onSurface = p.textHi,
+    surfaceVariant = p.raised, onSurfaceVariant = p.textLo, error = UltronColors.Red, outline = p.glassBorder,
+    surfaceContainer = p.surface, surfaceContainerHigh = p.raised,
 )
 
 private fun familyFor(f: AppFont): FontFamily = when (f) {
@@ -144,7 +149,8 @@ fun UltronTheme(
     val density = remember(d, textScale) { Density(d.density, d.fontScale * textScale) }
     CompositionLocalProvider(LocalUiPrefs provides prefs, LocalThemeVariant provides variant, LocalDensity provides density) {
         MaterialTheme(colorScheme = scheme, typography = typography) {
-            UltronBackground(variant) { content() }
+            // Without this, any Text with no explicit colour is BLACK outside a Surface (the dark-on-navy bug).
+            CompositionLocalProvider(LocalContentColor provides palette.textHi) { UltronBackground(variant) { content() } }
         }
     }
 }

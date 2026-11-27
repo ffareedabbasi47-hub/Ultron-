@@ -127,6 +127,21 @@ class AppContainer(private val app: Application) {
     /** The one live-conversation owner (see LiveSessionEngine). */
     val personalWake = com.ultron.ai.platform.live.PersonalWake(app, mic, diagnostics)
     val onnxWake = com.ultron.ai.platform.live.OnnxWake(app, diagnostics)
+    val webSearch = com.ultron.ai.platform.live.WebSearch(settings, http, diagnostics)
+    /** Real facts about this phone for the Capability Registry. */
+    suspend fun capabilityEnv(): com.ultron.ai.domain.CapabilityEnv {
+        val s = settings.settings.first()
+        fun granted(p: String) = androidx.core.content.ContextCompat.checkSelfPermission(app, p) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val wa = listOf("com.whatsapp", "com.whatsapp.w4b").any { pkg -> try { app.packageManager.getPackageInfo(pkg, 0); true } catch (_: Exception) { false } }
+        return com.ultron.ai.domain.CapabilityEnv(
+            micPermission = granted(android.Manifest.permission.RECORD_AUDIO), cloudConsent = s.cloudConsent, geminiKey = settings.geminiKey() != null,
+            liveCallEnabled = s.liveCall, wakeReady = personalWake.ready(com.ultron.ai.domain.wake.WakePhrase.HEY) || onnxWake.hasModelFiles(),
+            contactsPermission = granted(android.Manifest.permission.READ_CONTACTS), callPermission = granted(android.Manifest.permission.CALL_PHONE),
+            smsPermission = granted(android.Manifest.permission.SEND_SMS), whatsappInstalled = wa,
+            accessibilityOn = screenControl.isEnabled(), telephony = app.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY),
+        )
+    }
+
     /** Phone-call style conversation (Gemini Live). Local actions requested by the model go through the same validated runner. */
     val liveCall = com.ultron.ai.platform.live.LiveCall(
         appScope, settings, http, diagnostics,
@@ -155,7 +170,19 @@ class AppContainer(private val app: Application) {
                 }
                 else -> null
             }
-            if (name == "stop_listening") "ok" else if (action == null) "not supported" else actions.run(action).message
+            if (name == "web_search") {
+                val q = args["query"]?.trim().orEmpty()
+                if (q.isEmpty()) "No query." else when (val o = webSearch.search(q)) {
+                    is com.ultron.ai.platform.live.WebSearch.Outcome.Ok -> {
+                        liveChat.addNote(com.ultron.ai.platform.live.WebSearch.format(o.result)) // sources visible in Chat
+                        "WEB RESULT (from the internet, tell the user it is from the web): " + o.result.summary + if (o.result.sources.isEmpty()) " [no sources returned: say it is unverified]" else ""
+                    }
+                    is com.ultron.ai.platform.live.WebSearch.Outcome.Failed -> "SEARCH FAILED: " + o.message + " Tell the user honestly that no web search happened."
+                }
+            } else if (name == "my_capabilities") {
+                val st = com.ultron.ai.domain.CapabilityRegistry.evaluate(capabilityEnv())
+                com.ultron.ai.domain.CapabilityRegistry.describe(st, com.ultron.ai.domain.CapabilityRegistry.focusFor(args["topic"].orEmpty()))
+            } else if (name == "stop_listening") "ok" else if (action == null) "not supported" else actions.run(action).message
         },
         onMouth = { cloudVoice.pushExternalMouth(it) },
         onFirstAudioMs = { latency.recordFirstAudio(it) },
