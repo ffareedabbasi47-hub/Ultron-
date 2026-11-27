@@ -57,7 +57,7 @@ class LiveChat(
                 override fun onFailed(reason: String, retryable: Boolean) { turns.liveError(reason) }
                 override fun onEnded() {}
             }, com.ultron.ai.domain.Persona.systemPrompt(
-                com.ultron.ai.BuildConfig.CREATOR_NAME, s.responseStyle.wire, s.language.wire, "chat", s.customRules,
+                com.ultron.ai.BuildConfig.CREATOR_NAME, s.responseStyle.wire, s.language.wire, "live", s.customRules,
             ), s.cloudVoiceName, s.ttsVolume, s.fullDuplex)
         }
         var waited = 0

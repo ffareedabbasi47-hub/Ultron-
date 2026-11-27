@@ -83,6 +83,9 @@ class LiveCall(
     @Volatile var sink: Sink? = null
     /** Typed-message replies the user did not want spoken: audio is dropped (text still arrives as transcript). */
     @Volatile var muteAudio = false
+    private val handledTools = java.util.Collections.synchronizedSet(HashSet<String>())
+    /** Last connection failure (cleared when a session becomes ready): feeds the Capability Registry ERROR state. */
+    @Volatile var lastFailure: String? = null
 
     /** Hand the already-running session to another owner (voice engine) WITHOUT reconnecting: same socket, same context. */
     fun attach(l: Listener) { listener = l; muteAudio = false; if (ready) l.onReady() }
@@ -156,7 +159,7 @@ class LiveCall(
         val l = listener ?: return
         when {
             m.setupComplete -> {
-                ready = true; diagnostics.log("call", "ready"); l.onReady()
+                ready = true; lastFailure = null; diagnostics.log("call", "ready"); l.onReady()
                 sink?.let { sk -> scope.launch { // restore earlier conversation context into a fresh session
                     val h = try { sk.history() } catch (_: Exception) { emptyList() }
                     if (h.isNotEmpty() && gen == generation) ws?.send(LiveWire.history(h))
@@ -177,7 +180,11 @@ class LiveCall(
         m.heard?.takeIf { it.isNotBlank() }?.let(l::onHeard)
         m.said?.takeIf { it.isNotBlank() }?.let(l::onSaid)
         for (t in m.tools) scope.launch {
-            val r = try { runTool(t.name, t.args) } catch (e: Exception) { "failed" }
+            // Duplicate tool calls (same id) are executed once; a call must never run twice (two calls / two messages).
+            if (!handledTools.add(t.id)) { diagnostics.log("call", "duplicate tool call ignored: ${t.name}"); return@launch }
+            diagnostics.log("call", "tool call: ${t.name}")
+            val r = try { runTool(t.name, t.args) } catch (e: Exception) { "FAILED: ${e.javaClass.simpleName} ${e.message?.take(120).orEmpty()}" }
+            diagnostics.log("call", "tool result: ${t.name} len=${r.length}")
             if (gen == generation) ws?.send(LiveWire.toolResponse(t.id, t.name, r))
             if (t.name == "stop_listening" && gen == generation) { delay(1200); l.onEnded() }
         }
@@ -193,6 +200,7 @@ class LiveCall(
             429 -> "Live call ki limit poori (Gemini free key par Live ki limit chhoti hoti hai)."
             else -> "Live call toot gayi ($why)."
         }
+        lastFailure = msg
         sink?.onDown(msg)
         stop()
         l?.onFailed(msg, retryable && httpCode != 401 && httpCode != 403 && httpCode != 404 && httpCode != 429)

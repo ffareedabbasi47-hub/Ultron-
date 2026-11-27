@@ -76,7 +76,7 @@ object LiveWire {
         if (props.isNotEmpty()) putJsonObject("parameters") {
             put("type", "OBJECT")
             putJsonObject("properties") { for ((k, d) in props) putJsonObject(k) { put("type", "STRING"); put("description", d) } }
-            putJsonArray("required") { for ((k, _) in props) add(k) }
+            putJsonArray("required") { for ((k, d) in props) if (!d.contains("optional", ignoreCase = true)) add(k) } // optional params must not be forced on the model
         }
     }
 
@@ -99,7 +99,14 @@ object LiveWire {
                         add(tool("phone_toggle", "Turn a phone switch on or off: wifi, hotspot, bluetooth, airplane, mobile_data, location, nfc or torch.", "name" to "wifi|hotspot|bluetooth|airplane|mobile_data|location|nfc|torch", "state" to "on or off"))
                         add(tool("set_reminder", "Set a reminder after some minutes.", "text" to "What to remind", "minutes" to "Delay in minutes as a number"))
                         add(tool("build_project", "Hand a coding job (website, web page, small app) to the background builder agent. Use when the user asks you to build or code something. Pass a clear one-sentence brief.", "brief" to "What to build, with key requirements"))
-                        add(tool("web_search", "Search the live web for current information, news or documentation. Use for anything recent or that you are not sure about. Answer ONLY from what it returns and say it came from the web.", "query" to "What to search for"))
+                        add(tool("call_contact", "Place a phone call to a saved contact by name, in ANY language or relation (father, papa, abbu, mom...). FIRST tell the user who you will call and wait for a clear yes, THEN call this tool. The phone resolves the real contact and may report it is ambiguous or missing: tell the user that result honestly. Opening the dialer is not a connected call.", "name" to "Contact name or relation as the user said it"))
+                        add(tool("call_number", "Call a typed phone number (never emergency numbers). Confirm the digits aloud with the user first.", "number" to "Digits, optional leading +"))
+                        add(tool("send_message", "Prepare a message to a contact. channel 'whatsapp' opens the WhatsApp chat with the text prefilled (the user taps Send; delivery is NOT known). channel 'sms' sends a text. FIRST read the exact message back and get a clear yes, THEN call. Never claim it was delivered.", "name" to "Contact name or relation", "body" to "Exact message text", "channel" to "whatsapp or sms"))
+                        add(tool("set_alarm", "Set an alarm. 24-hour hour/minute. Use in_minutes instead for 'after N minutes'.", "hour" to "optional if in_minutes is used: 0-23", "minute" to "optional if in_minutes is used: 0-59", "in_minutes" to "optional: minutes from now", "tomorrow" to "optional: true"))
+                        add(tool("set_timer", "Start a countdown timer.", "seconds" to "Duration in seconds"))
+                        add(tool("device_control", "Change volume, brightness, do-not-disturb or media playback. kind: volume_up, volume_down, brightness (value 1-100), dnd (value on/off), media (value play/pause/next/previous/close_youtube).", "kind" to "volume_up|volume_down|brightness|dnd|media", "value" to "optional for volume; brightness 1-100, dnd on/off, media play/pause/next/previous/close_youtube"))
+                        add(tool("remember", "Save a fact the user asked you to remember.", "text" to "What to remember"))
+                        add(tool("web_search", "Research / search the live web for current information, news or documentation (works for requests in any language, e.g. 'is topic par research karo'). Call it, with several different queries if you need to compare sources. Answer ONLY from what it returns, say it came from the web, and if it says the search failed, tell the user that honestly instead of guessing.", "query" to "What to search for"))
                         add(tool("my_capabilities", "Get the REAL list of what ULTRON can and cannot do right now on this phone (permissions, config). Call this for any question about your abilities and never claim abilities it does not list.", "topic" to "optional: whatsapp, calling, sms, web_search, wake or empty"))
                         add(tool("stop_listening", "End the voice call when the user says goodbye or asks you to stop."))
                     }
@@ -154,7 +161,7 @@ object LiveWire {
                 val o = e as? JsonObject ?: return@mapNotNull null
                 val id = o["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
                 val name = o["name"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                val args = (o["args"] as? JsonObject)?.mapValues { it.value.jsonPrimitive.contentOrNull.orEmpty() }.orEmpty()
+                val args = (o["args"] as? JsonObject)?.mapValues { (it.value as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull.orEmpty() }.orEmpty()
                 ToolCall(id, name, args)
             }
             return CallMsg(tools = calls)

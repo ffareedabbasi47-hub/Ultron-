@@ -43,6 +43,17 @@ class DeviceActionRunner(
     var agent: ScreenAgent? = null
     var builder: com.ultron.ai.platform.builder.BuilderAgent? = null
 
+    /** Set only while a Gemini Live tool call runs: the model already got the user's spoken yes inside the Live conversation
+     *  (the local yes/no listener cannot hear the user then, because the mic is feeding the Live session). */
+    @Volatile private var preConfirmed = false
+
+    private suspend fun ask(question: String, speak: (String) -> Unit): Boolean = preConfirmed || broker.ask(question, speak)
+
+    suspend fun runPreConfirmed(action: UltronAction): ActionResult {
+        preConfirmed = true
+        try { return run(action) } finally { preConfirmed = false }
+    }
+
     override suspend fun run(action: UltronAction): ActionResult = when (action) {
         is UltronAction.OpenApp -> openApp(action.appName)
         is UltronAction.YouTubeSearch -> youTubePlay(action.query)
@@ -220,7 +231,7 @@ class DeviceActionRunner(
 
     private suspend fun placeCall(number: String, label: String): ActionResult {
         val shown = if (label == number) "…" + number.takeLast(4) else "$label (…${number.takeLast(4)})"
-        val yes = broker.ask("$shown ko call karun? Haan ya nahi bolo.", { x -> val k = tts.beginSpeech(0L); tts.enqueue(k, x); tts.endSpeech(k) })
+        val yes = ask("$shown ko call karun? Haan ya nahi bolo.", { x -> val k = tts.beginSpeech(0L); tts.enqueue(k, x); tts.endSpeech(k) })
         if (!yes) return ActionResult(false, "Theek hai, call nahi kiya.")
         val uri = Uri.parse("tel:" + Uri.encode(number))
         val direct = granted(android.Manifest.permission.CALL_PHONE)
@@ -265,7 +276,7 @@ class DeviceActionRunner(
             val am = a.hour % 12; val pm = a.hour % 12 + 12
             h = if (next(am) <= next(pm)) am else pm
             val word = if (h < 12) "subah (AM)" else "shaam/dopahar (PM)"
-            val yes = broker.ask("$h baje ${"%02d".format(m)} ka matlab $word? ${fmt(next(h))} par alarm lagaun? Haan ya nahi.", { x -> val k = tts.beginSpeech(0L); tts.enqueue(k, x); tts.endSpeech(k) })
+            val yes = ask("$h baje ${"%02d".format(m)} ka matlab $word? ${fmt(next(h))} par alarm lagaun? Haan ya nahi.", { x -> val k = tts.beginSpeech(0L); tts.enqueue(k, x); tts.endSpeech(k) })
             if (!yes) return ActionResult(false, "Theek hai, alarm nahi lagaya. AM ya PM saath bolo, jaise \"subah 6 baje\".")
         }
         val t = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, h); set(java.util.Calendar.MINUTE, m); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0) }
@@ -311,7 +322,7 @@ class DeviceActionRunner(
 
     private suspend fun dismissAlarm(): ActionResult {
         val before = nextAlarmMs() ?: return ActionResult(false, "Koi alarm set nahi dikh raha, kuch band nahi kiya.")
-        val yes = broker.ask("Agla alarm ${fmt(before)} wala band karun? Haan ya nahi.", { x -> val k = tts.beginSpeech(0L); tts.enqueue(k, x); tts.endSpeech(k) })
+        val yes = ask("Agla alarm ${fmt(before)} wala band karun? Haan ya nahi.", { x -> val k = tts.beginSpeech(0L); tts.enqueue(k, x); tts.endSpeech(k) })
         if (!yes) return ActionResult(false, "Theek hai, alarm nahi hataya.")
         val i = Intent(android.provider.AlarmClock.ACTION_DISMISS_ALARM).putExtra("android.intent.extra.alarm.SEARCH_MODE", "android.next").putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, true)
         val r = try { BackgroundLaunch.launch(context, i, "Alarm band", "") } catch (e: Exception) { return ActionResult(false, "Clock app alarm band karne ka request support nahi karta.") }
@@ -327,7 +338,7 @@ class DeviceActionRunner(
         if (body.isNullOrBlank()) return ActionResult(false, "Message kya bhejna hai? Ek saath bolo: \"$name ko message bhejo ki main aa raha hoon\". Kuch bheja nahi.")
         val c = when (val r = resolve(name, "message")) { is Resolved.Fail -> return r.result; is Resolved.Ok -> r }
         val via = if (whatsapp) "WhatsApp par" else "SMS"
-        val yes = broker.ask("${c.name} (…${c.number.takeLast(4)}) ko $via ye message bhejun: \"$body\". Bhej doon? Haan ya nahi.", { x -> val k = tts.beginSpeech(0L); tts.enqueue(k, x); tts.endSpeech(k) })
+        val yes = ask("${c.name} (…${c.number.takeLast(4)}) ko $via ye message bhejun: \"$body\". Bhej doon? Haan ya nahi.", { x -> val k = tts.beginSpeech(0L); tts.enqueue(k, x); tts.endSpeech(k) })
         if (!yes) return ActionResult(false, "Theek hai, message nahi bheja.")
         return if (whatsapp) whatsappSend(c.name, c.number, body) else smsSend(c.name, c.number, body)
     }

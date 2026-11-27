@@ -229,7 +229,7 @@ class LiveSessionEngine(
         acquireFocus() // a call takes audio focus like any call; the normal listening mode never holds it (it would pause the user's music)
         clock = SleepClock(0)
         val prompt = com.ultron.ai.domain.Persona.systemPrompt(
-            com.ultron.ai.BuildConfig.CREATOR_NAME, s.responseStyle.wire, s.language.wire, "chat", s.customRules,
+            com.ultron.ai.BuildConfig.CREATOR_NAME, s.responseStyle.wire, s.language.wire, "live", s.customRules,
         ) + " This is a live phone-style voice call: answer in one or two short spoken sentences, start immediately, deep calm menacing delivery with audible measured breaths between phrases, no lists or markdown."
         val listener = object : LiveCall.Listener {
             override fun onReady() { publishDiag { it.copy(note = "Live call: connected") } }

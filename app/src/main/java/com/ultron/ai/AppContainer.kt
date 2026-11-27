@@ -128,6 +128,10 @@ class AppContainer(private val app: Application) {
     val personalWake: com.ultron.ai.platform.live.PersonalWake = com.ultron.ai.platform.live.PersonalWake(app, mic, diagnostics)
     val onnxWake: com.ultron.ai.platform.live.OnnxWake = com.ultron.ai.platform.live.OnnxWake(app, diagnostics)
     val webSearch: com.ultron.ai.platform.live.WebSearch = com.ultron.ai.platform.live.WebSearch(settings, http, diagnostics)
+    /** Research is independent of the Live session: Google Search grounding first, Wikipedia as the second, keyless provider. */
+    val research: com.ultron.ai.domain.research.ResearchEngine = com.ultron.ai.domain.research.ResearchEngine(
+        listOf(com.ultron.ai.platform.live.GeminiGroundingProvider(webSearch), com.ultron.ai.platform.live.WikipediaProvider(http)),
+    )
     /** Real facts about this phone for the Capability Registry. */
     suspend fun capabilityEnv(): com.ultron.ai.domain.CapabilityEnv {
         val s = settings.settings.first()
@@ -138,6 +142,8 @@ class AppContainer(private val app: Application) {
             liveCallEnabled = s.liveCall, wakeReady = personalWake.ready(com.ultron.ai.domain.wake.WakePhrase.HEY) || onnxWake.hasModelFiles(),
             contactsPermission = granted(android.Manifest.permission.READ_CONTACTS), callPermission = granted(android.Manifest.permission.CALL_PHONE),
             smsPermission = granted(android.Manifest.permission.SEND_SMS), whatsappInstalled = wa,
+            networkAvailable = (app.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager)?.let { cm -> cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true } ?: true,
+            liveLastError = liveCall.lastFailure,
             accessibilityOn = screenControl.isEnabled(), telephony = app.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY),
         )
     }
@@ -164,6 +170,36 @@ class AppContainer(private val app: Application) {
                     val on = when (args["state"]?.lowercase()) { "on" -> true; "off" -> false; else -> null }
                     if (t != null && on != null) com.ultron.ai.domain.UltronAction.SetToggle(t, on) else null
                 }
+                "call_contact" -> args["name"]?.trim()?.takeIf { it.isNotEmpty() }?.let { com.ultron.ai.domain.UltronAction.CallContact(it.take(40)) }
+                "call_number" -> args["number"]?.let { com.ultron.ai.domain.ContactMatcher.normalizeNumber(it) }?.let { com.ultron.ai.domain.UltronAction.CallNumber(it) }
+                "send_message" -> {
+                    val n = args["name"]?.trim().orEmpty(); val b = args["body"]?.trim().orEmpty()
+                    if (n.isEmpty() || b.isEmpty()) null else com.ultron.ai.domain.UltronAction.SendMessage(n.take(40), b.take(600), args["channel"]?.lowercase()?.contains("whats") == true)
+                }
+                "set_alarm" -> {
+                    val inMin = args["in_minutes"]?.toIntOrNull()
+                    val h = args["hour"]?.toIntOrNull(); val m = args["minute"]?.toIntOrNull() ?: 0
+                    if (inMin != null) com.ultron.ai.domain.UltronAction.SetAlarm(0, 0, false, inMin.coerceIn(1, 1440), emptyList(), false)
+                    else if (h != null && h in 0..23 && m in 0..59) com.ultron.ai.domain.UltronAction.SetAlarm(h, m, false, null, emptyList(), args["tomorrow"]?.lowercase() == "true")
+                    else null
+                }
+                "set_timer" -> args["seconds"]?.toIntOrNull()?.takeIf { it in 1..86400 }?.let { com.ultron.ai.domain.UltronAction.SetTimer(it) }
+                "device_control" -> {
+                    val v = args["value"]?.lowercase().orEmpty()
+                    when (args["kind"]?.lowercase()) {
+                        "volume_up" -> com.ultron.ai.domain.UltronAction.AdjustVolume(true)
+                        "volume_down" -> com.ultron.ai.domain.UltronAction.AdjustVolume(false)
+                        "brightness" -> v.toIntOrNull()?.takeIf { it in 1..100 }?.let { com.ultron.ai.domain.UltronAction.SetBrightness(it) }
+                        "dnd" -> if (v == "on" || v == "off") com.ultron.ai.domain.UltronAction.SetDnd(v == "on") else null
+                        "media" -> when (v) {
+                            "play" -> com.ultron.ai.domain.MediaCmd.PLAY; "pause" -> com.ultron.ai.domain.MediaCmd.PAUSE
+                            "next" -> com.ultron.ai.domain.MediaCmd.NEXT; "previous" -> com.ultron.ai.domain.MediaCmd.PREVIOUS
+                            "close_youtube" -> com.ultron.ai.domain.MediaCmd.CLOSE_YOUTUBE; else -> null
+                        }?.let { com.ultron.ai.domain.UltronAction.MediaControl(it) }
+                        else -> null
+                    }
+                }
+                "remember" -> args["text"]?.trim()?.takeIf { it.isNotEmpty() }?.let { com.ultron.ai.domain.UltronAction.Remember(it.take(500)) }
                 "build_project" -> args["brief"]?.takeIf { it.isNotBlank() }?.let { com.ultron.ai.domain.UltronAction.BuildProject(it.take(600)) }
                 "set_reminder" -> args["text"]?.takeIf { it.isNotBlank() }?.let {
                     com.ultron.ai.domain.UltronAction.SetReminder(it.take(120), (args["minutes"]?.toIntOrNull() ?: 10).coerceIn(1, 1440))
@@ -172,17 +208,18 @@ class AppContainer(private val app: Application) {
             }
             if (name == "web_search") {
                 val q = args["query"]?.trim().orEmpty()
-                if (q.isEmpty()) "No query." else when (val o = webSearch.search(q)) {
-                    is com.ultron.ai.platform.live.WebSearch.Outcome.Ok -> {
-                        liveChat.addNote(com.ultron.ai.platform.live.WebSearch.format(o.result)) // sources visible in Chat
-                        "WEB RESULT (from the internet, tell the user it is from the web): " + o.result.summary + if (o.result.sources.isEmpty()) " [no sources returned: say it is unverified]" else ""
+                if (q.isEmpty()) "No query." else when (val o = research.research(q)) {
+                    is com.ultron.ai.domain.research.ResearchResult.Answer -> {
+                        liveChat.addNote(com.ultron.ai.platform.live.WebSearch.format(o.result, o.provider)) // sources visible in Chat
+                        "WEB RESULT via ${o.provider}${if (o.cached) " (cached)" else ""} (from the internet, tell the user it is from the web): " + o.result.summary + if (o.result.sources.isEmpty()) " [no sources returned: say it is unverified]" else ""
                     }
-                    is com.ultron.ai.platform.live.WebSearch.Outcome.Failed -> "SEARCH FAILED: " + o.message + " Tell the user honestly that no web search happened."
+                    is com.ultron.ai.domain.research.ResearchResult.Unavailable ->
+                        "SEARCH FAILED, no provider worked: " + o.attempts.joinToString("; ") { "${it.provider} -> ${it.outcome}" } + ". Tell the user honestly that no research happened and why. Never invent results."
                 }
             } else if (name == "my_capabilities") {
                 val st = com.ultron.ai.domain.CapabilityRegistry.evaluate(capabilityEnv())
                 com.ultron.ai.domain.CapabilityRegistry.describe(st, com.ultron.ai.domain.CapabilityRegistry.focusFor(args["topic"].orEmpty()))
-            } else if (name == "stop_listening") "ok" else if (action == null) "not supported" else actions.run(action).message
+            } else if (name == "stop_listening") "ok" else if (action == null) "not supported or invalid arguments" else if (action is com.ultron.ai.domain.UltronAction.CallContact || action is com.ultron.ai.domain.UltronAction.CallNumber || action is com.ultron.ai.domain.UltronAction.SendMessage || action is com.ultron.ai.domain.UltronAction.SetAlarm) actions.runPreConfirmed(action).message else actions.run(action).message
         },
         onMouth = { cloudVoice.pushExternalMouth(it) },
         onFirstAudioMs = { latency.recordFirstAudio(it) },

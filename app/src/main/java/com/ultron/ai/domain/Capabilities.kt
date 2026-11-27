@@ -5,6 +5,7 @@ data class CapabilityEnv(
     val micPermission: Boolean, val cloudConsent: Boolean, val geminiKey: Boolean, val liveCallEnabled: Boolean,
     val wakeReady: Boolean, val contactsPermission: Boolean, val callPermission: Boolean, val smsPermission: Boolean,
     val whatsappInstalled: Boolean, val accessibilityOn: Boolean, val telephony: Boolean,
+    val networkAvailable: Boolean = true, val liveLastError: String? = null,
 )
 
 /** One capability: what it is, what it needs, who runs it, how it can be asked, where it stops. */
@@ -16,7 +17,11 @@ data class Capability(
     val missing: (CapabilityEnv) -> List<String>,
 )
 
-data class CapabilityStatus(val cap: Capability, val missing: List<String>) { val available get() = missing.isEmpty() }
+enum class CapState { AVAILABLE, NEEDS_PERMISSION, NEEDS_CONFIGURATION, TEMPORARILY_UNAVAILABLE, UNSUPPORTED, ERROR }
+
+data class CapabilityStatus(val cap: Capability, val missing: List<String>, val state: CapState = if (missing.isEmpty()) CapState.AVAILABLE else CapState.NEEDS_CONFIGURATION, val detail: String = "") {
+    val available get() = state == CapState.AVAILABLE
+}
 
 object CapabilityRegistry {
     private val cloud: (CapabilityEnv) -> List<String> = { e ->
@@ -63,15 +68,35 @@ object CapabilityRegistry {
             listOf("voice", "text"), "Playback sirf isMusicActive se jaanchi jaati hai; ULTRON dusre app ko kill nahi kar sakta.") { _ -> emptyList() },
     )
 
-    fun evaluate(env: CapabilityEnv): List<CapabilityStatus> = all.map { CapabilityStatus(it, it.missing(env)) }
+    private val needsNetwork = setOf("live_voice", "text_chat", "web_search")
+    private val liveIds = setOf("live_voice", "text_chat")
+
+    /** Runtime state from real facts only: a code file existing never makes anything AVAILABLE. */
+    fun evaluate(env: CapabilityEnv): List<CapabilityStatus> = all.map { c ->
+        val m = c.missing(env)
+        val state = when {
+            m.any { it.contains("hardware") || it.contains("installed nahi") } -> CapState.UNSUPPORTED
+            m.any { it.contains("permission", ignoreCase = true) } -> CapState.NEEDS_PERMISSION
+            m.isNotEmpty() -> CapState.NEEDS_CONFIGURATION
+            c.id in liveIds && env.liveLastError != null -> CapState.ERROR
+            c.id in needsNetwork && !env.networkAvailable -> CapState.TEMPORARILY_UNAVAILABLE
+            else -> CapState.AVAILABLE
+        }
+        CapabilityStatus(c, m, state, if (state == CapState.ERROR) env.liveLastError.orEmpty() else "")
+    }
 
     /** Plain-language answer built ONLY from the evaluated registry. [focus] limits it to one capability id. */
     fun describe(statuses: List<CapabilityStatus>, focus: String? = null): String {
         val list = if (focus == null) statuses else statuses.filter { it.cap.id == focus }
         if (list.isEmpty()) return "Is cheez ki koi capability registry me nahi hai."
         return list.joinToString("\n") { s ->
-            if (s.available) "- ${s.cap.name}: AVAILABLE. ${s.cap.description} Limit: ${s.cap.limitations}"
-            else "- ${s.cap.name}: abhi NAHI chalega, kyunki ${s.missing.joinToString(", ")} chahiye."
+            when (s.state) {
+                CapState.AVAILABLE -> "- ${s.cap.name}: AVAILABLE. ${s.cap.description} Limit: ${s.cap.limitations}"
+                CapState.ERROR -> "- ${s.cap.name}: ERROR, abhi nahi chalega. Pichli galti: ${s.detail}"
+                CapState.TEMPORARILY_UNAVAILABLE -> "- ${s.cap.name}: TEMPORARILY_UNAVAILABLE (internet nahi hai)."
+                CapState.UNSUPPORTED -> "- ${s.cap.name}: UNSUPPORTED is phone par, kyunki ${s.missing.joinToString(", ")}."
+                else -> "- ${s.cap.name}: abhi NAHI chalega (${s.state}), kyunki ${s.missing.joinToString(", ")} chahiye."
+            }
         }
     }
 

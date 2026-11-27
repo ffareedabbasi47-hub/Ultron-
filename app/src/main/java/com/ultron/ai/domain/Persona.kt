@@ -16,6 +16,7 @@ object Persona {
     )
     private val mode = mapOf(
         "chat" to "",
+        "live" to "LIVE TOOLS: in this live session you DO have working tools: call_contact, call_number, send_message (whatsapp or sms), set_alarm, set_timer, device_control (volume, brightness, DND, media), phone_toggle, open_app, youtube_search, remember, set_reminder, web_search (research) and my_capabilities. When the user asks for any of these, in ANY language, use the tool; never say you cannot do something your tools cover. For calls and messages: say who/what in one short sentence, wait for a clear yes, then call the tool. Report the tool's real result; opening a dialer or a WhatsApp chat is a handoff, not a connected call or a delivered message. For research, use web_search and say the answer came from the web; if it fails, say so. Reply in the user's own language.",
         "study" to "Study mode: explain concepts step by step, give a concrete example, then offer 2-3 short practice questions. Check understanding before moving on.",
     )
 

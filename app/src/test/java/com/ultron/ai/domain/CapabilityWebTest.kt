@@ -42,4 +42,16 @@ class CapabilityWebTest {
         assertNull(WebSearchWire.parse("""{"candidates":[]}"""))
         assertNull(WebSearchWire.parse("not json"))
     }
+
+    @Test fun statesAreRuntimeFacts() {
+        val base = env()
+        fun state(e: CapabilityEnv, id: String) = CapabilityRegistry.evaluate(e).first { it.cap.id == id }.state
+        assertEquals(CapState.AVAILABLE, state(base, "web_search"))
+        assertEquals(CapState.NEEDS_CONFIGURATION, state(env(key = false), "web_search"))
+        assertEquals(CapState.NEEDS_PERMISSION, state(env(contacts = false), "calling"))
+        assertEquals(CapState.UNSUPPORTED, state(env(wa = false), "whatsapp"))
+        assertEquals(CapState.TEMPORARILY_UNAVAILABLE, state(base.copy(networkAvailable = false), "web_search"))
+        assertEquals(CapState.ERROR, state(base.copy(liveLastError = "429"), "live_voice"))
+        assertEquals(CapState.AVAILABLE, state(base.copy(networkAvailable = false), "alarms"))
+    }
 }
