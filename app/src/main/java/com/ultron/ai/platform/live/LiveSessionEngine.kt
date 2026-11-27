@@ -83,6 +83,9 @@ class LiveSessionEngine(
 
     /** True while a phone-call style (Gemini Live) conversation owns the session. */
     @Volatile private var inCall = false
+    val voiceCallActive: Boolean get() = inCall
+    @Volatile private var wokeForCall = false
+    @Volatile private var cloudKeyOk = false
     /** Set after a call failed once: the rest of this session uses the normal pipeline. */
     @Volatile private var forceNormal = false
     /** True while the current utterance is being streamed to the live transcriber. */
@@ -172,11 +175,12 @@ class LiveSessionEngine(
         clock = SleepClock(s.sleepTimeout.millis).also { it.reset(now()) }
         applyAudioRoute(s)
         val cloudReady = s.cloudConsent && settings.geminiKey() != null
+        cloudKeyOk = cloudReady
         val neural = onnx != null && withContext(kotlinx.coroutines.Dispatchers.IO) { onnx.prepare() }
         // Armed = the mic only feeds the on-phone wake matcher. It is used when there is no cloud permission/key at all
         // (nothing could be transcribed anyway) or when the user chose "wake first". Phone-call mode streams ALL audio, so it never starts armed.
         val mode = com.ultron.ai.domain.live.VoiceModePolicy.decide(
-            wakeOn = s.wakePersonal, wakeReady = neural || personal?.ready == true, cloudReady = cloudReady, wakeFirst = s.wakeFirst,
+            wakeOn = s.wakePersonal, wakeReady = neural || personal?.ready == true, cloudReady = cloudReady, wakeFirst = s.wakeFirst && !wokeForCall,
             liveCallEnabled = s.liveCall, callAvailable = call != null, forceNormal = forceNormal,
         )
         if (mode == com.ultron.ai.domain.live.VoiceMode.NEEDS_WAKE_SETUP) {
@@ -188,6 +192,7 @@ class LiveSessionEngine(
         }
         val armed = mode == com.ultron.ai.domain.live.VoiceMode.ARMED
         val useCall = mode == com.ultron.ai.domain.live.VoiceMode.CALL
+        wokeForCall = false
         val ok = mic.start(if (useCall) ::onCallFrame else ::onFrame, ::onFatal, ::onSilenced)
         if (!ok) { publishDiag(); return } // onFatal already set the state
         if (_state.value != LiveState.STARTING) {
@@ -226,14 +231,16 @@ class LiveSessionEngine(
         val prompt = com.ultron.ai.domain.Persona.systemPrompt(
             com.ultron.ai.BuildConfig.CREATOR_NAME, s.responseStyle.wire, s.language.wire, "chat", s.customRules,
         ) + " This is a live phone-style voice call: answer in one or two short spoken sentences, start immediately, deep calm menacing delivery with audible measured breaths between phrases, no lists or markdown."
-        c.start(object : LiveCall.Listener {
+        val listener = object : LiveCall.Listener {
             override fun onReady() { publishDiag { it.copy(note = "Live call: connected") } }
             override fun onSpeaking(speaking: Boolean) { move(if (speaking) LiveState.SPEAKING else LiveState.LISTENING) }
             override fun onHeard(text: String) { _heard.value = text; if (_state.value == LiveState.LISTENING) move(LiveState.USER_SPEECH) }
             override fun onSaid(text: String) {}
             override fun onFailed(reason: String, retryable: Boolean) { callFailed(reason) }
             override fun onEnded() { stop() }
-        }, prompt, s.cloudVoiceName, s.ttsVolume, s.fullDuplex)
+        }
+        // A session already running (typed chat) is reused: same socket, same context. Never a second session.
+        if (c.isActive) c.attach(listener) else c.start(listener, prompt, s.cloudVoiceName, s.ttsVolume, s.fullDuplex)
     }
 
     /** Mic frames go straight to the call. While ULTRON speaks they are muted unless the echo canceller is really on. */
@@ -251,13 +258,10 @@ class LiveSessionEngine(
     private fun callFailed(reason: String) {
         scope.launch {
             if (!inCall) return@launch
-            inCall = false
-            forceNormal = true
-            mic.stop()
-            // PAUSED (not STOPPED): the foreground service shuts itself down on STOPPED, which would kill the fallback session.
-            synchronized(stateLock) { _state.value = LiveState.PAUSED }
-            carryMessage = "$reason Ab purana tareeka (sun kar jawab) chalu kar raha hoon."
-            start()
+            // Honest failure: no silent switch to another AI engine. The reason stays on screen; the user restarts Live themselves.
+            stop()
+            _message.value = "$reason Live band hai; dobara mic dabao ya wake bolo."
+            diagnostics.log("live", "live call failed, stopped (no fallback): $reason")
         }
     }
 
@@ -476,6 +480,14 @@ class LiveSessionEngine(
     fun wake() { scope.launch { start() } }
 
     private fun wakeInternal() {
+        val live = cfg.liveCall && call != null && cloudKeyOk && !inCall
+        if (live && mic.isRunning) {
+            // Wake word only ACTIVATES Gemini Live: re-open the one recorder in call mode (one mic owner at a time).
+            wokeForCall = true
+            mic.stop()
+            synchronized(stateLock) { _state.value = LiveState.PAUSED } // PAUSED keeps the foreground service alive
+            start(); return
+        }
         if (!mic.isRunning) { start(); return } // claims STARTING itself (no STOPPED flicker)
         move(LiveState.LISTENING); clock.reset(now())
     }

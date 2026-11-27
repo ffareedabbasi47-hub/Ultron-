@@ -177,6 +177,8 @@ class AssistantEngine(
         touch(conversationId, null)
     }
 
+    suspend fun touchConversation(conversationId: Long, firstUserText: String?) = touch(conversationId, firstUserText)
+
     private suspend fun touch(conversationId: Long, firstUserText: String?) {
         val c = dao.get(conversationId) ?: return
         val title = if (firstUserText != null && c.title == "Nayi baat") firstUserText.take(40) else c.title

@@ -31,10 +31,22 @@ class ChatViewModel(private val c: AppContainer, val mode: ChatMode) : ViewModel
 
     init {
         viewModelScope.launch { conversationId.value = c.engine.latestOrNew(mode) }
+        viewModelScope.launch { conversationId.collect { id -> if (id != null) c.liveChat.bind(id) } }
     }
 
     /** Resolves the conversation id (creating one if needed) and submits the text. */
     fun send(text: String) {
+        val t = text.trim()
+        if (t.isEmpty()) return
+        viewModelScope.launch {
+            val id = conversationId.value ?: c.engine.latestOrNew(mode).also { conversationId.value = it }
+            // Gemini Live is the primary AI: typed text goes into the same Live session as voice (no silent switch to normal chat).
+            c.liveChat.send(id, t, c.turns.speakEnabled())
+        }
+    }
+
+    /** Explicit, user-chosen alternative when Live is unavailable: the normal (non-Live) chat model. Never called automatically. */
+    fun sendViaNormalChat(text: String) {
         val t = text.trim()
         if (t.isEmpty()) return
         viewModelScope.launch {

@@ -72,6 +72,27 @@ class LiveCall(
     @Volatile private var communication = false
 
     val isActive: Boolean get() = ws != null
+    val isReady: Boolean get() = ready && ws != null
+
+    /** Raw Live events for the shared chat (transcripts, completion, honest disconnect). One sink for the one session. */
+    interface Sink {
+        fun onEvent(heard: String?, said: String?, turnComplete: Boolean, interrupted: Boolean)
+        fun onDown(reason: String)
+        suspend fun history(): List<Pair<String, String>>
+    }
+    @Volatile var sink: Sink? = null
+    /** Typed-message replies the user did not want spoken: audio is dropped (text still arrives as transcript). */
+    @Volatile var muteAudio = false
+
+    /** Hand the already-running session to another owner (voice engine) WITHOUT reconnecting: same socket, same context. */
+    fun attach(l: Listener) { listener = l; muteAudio = false; if (ready) l.onReady() }
+
+    /** Typed input into the same session. False = not sent (no ready session); nothing is queued silently. */
+    fun sendText(t: String): Boolean {
+        val w = ws ?: return false
+        if (!ready) return false
+        return w.send(LiveWire.text(t))
+    }
 
     fun start(l: Listener, systemPrompt: String, voice: String, volume: Float, communication: Boolean) {
         stop()
@@ -134,14 +155,21 @@ class LiveCall(
         val m = LiveWire.parseCall(text) ?: return
         val l = listener ?: return
         when {
-            m.setupComplete -> { ready = true; diagnostics.log("call", "ready"); l.onReady() }
+            m.setupComplete -> {
+                ready = true; diagnostics.log("call", "ready"); l.onReady()
+                sink?.let { sk -> scope.launch { // restore earlier conversation context into a fresh session
+                    val h = try { sk.history() } catch (_: Exception) { emptyList() }
+                    if (h.isNotEmpty() && gen == generation) ws?.send(LiveWire.history(h))
+                } }
+            }
             m.error != null -> down(gen, "server error", false)
             m.goAway -> down(gen, "goAway", true)
         }
         m.heard?.takeIf { it.isNotBlank() }?.let { if (heardAt == 0L) heardAt = android.os.SystemClock.elapsedRealtime() }
         if (m.audio.isNotEmpty() && heardAt != 0L) { onFirstAudioMs(android.os.SystemClock.elapsedRealtime() - heardAt); heardAt = 0L }
         if (m.turnComplete || m.interrupted) heardAt = 0L
-        m.audio.forEach { b64 ->
+        if (m.heard != null || m.said != null || m.turnComplete || m.interrupted) sink?.onEvent(m.heard, m.said, m.turnComplete, m.interrupted)
+        if (!muteAudio) m.audio.forEach { b64 ->
             val bytes = try { Base64.decode(b64, Base64.DEFAULT) } catch (_: Exception) { return@forEach }
             audioQueue.trySend(bytes)
         }
@@ -165,6 +193,7 @@ class LiveCall(
             429 -> "Live call ki limit poori (Gemini free key par Live ki limit chhoti hoti hai)."
             else -> "Live call toot gayi ($why)."
         }
+        sink?.onDown(msg)
         stop()
         l?.onFailed(msg, retryable && httpCode != 401 && httpCode != 403 && httpCode != 404 && httpCode != 429)
     }

@@ -125,6 +125,10 @@ class TurnController(
         _state.update { it.copy(busy = false, streaming = "") }
     }
 
+    /** Live typed chat: show busy / honest error in the existing chat UI. Not retryable on purpose (retry would silently use the normal chat AI). */
+    fun liveBusy(on: Boolean) = _state.update { it.copy(busy = on, error = null) }
+    fun liveError(message: String) = _state.update { it.copy(busy = false, error = TurnError(ErrorKind.NOT_CONFIGURED, message)) }
+
     fun dismissError() = _state.update { it.copy(error = null, needsConsent = false) }
 
     /** Consent granted: persist the choice and re-send what was pending. */

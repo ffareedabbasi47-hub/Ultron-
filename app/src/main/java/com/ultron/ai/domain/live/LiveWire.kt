@@ -115,6 +115,21 @@ object LiveWire {
     }.toString()
 
     class ToolCall(val id: String, val name: String, val args: Map<String, String>)
+    /** A typed message into the SAME live session (Live API realtimeInput text). */
+    fun text(t: String): String = buildJsonObject { putJsonObject("realtimeInput") { put("text", t) } }.toString()
+
+    /** Earlier conversation restored into a fresh session (role: "user" | "model"). Not a turn: the model does not answer it. */
+    fun history(turns: List<Pair<String, String>>): String = buildJsonObject {
+        putJsonObject("clientContent") {
+            putJsonArray("turns") {
+                turns.forEach { (role, t) ->
+                    add(buildJsonObject { put("role", role); putJsonArray("parts") { add(buildJsonObject { put("text", t) }) } })
+                }
+            }
+            put("turnComplete", false)
+        }
+    }.toString()
+
     class CallMsg(
         val setupComplete: Boolean = false,
         val audio: List<String> = emptyList(),   // base64 PCM16 @ 24 kHz chunks
