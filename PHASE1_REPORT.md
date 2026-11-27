@@ -119,3 +119,5 @@ Themes: +Deep space, Cyber blue, Aurora, Silver glass (LIGHT palette with dark t
 Web search: WebSearch.kt + WebSearchWire (Gemini Google Search grounding, user's own key, nothing hardcoded); Live tool web_search; sources written into chat as a local note; failures reported, "no sources" flagged.
 Capability Registry: domain/Capabilities.kt (+ CapabilityEnv built from real permission/app/key checks in AppContainer); Live tool my_capabilities answers from it. WhatsApp package visibility added to manifest queries.
 Tests: 103/103 JVM logic OK. NOT verified: Android compile, any on-device check, real search results, contrast measured by eye only on the video frames.
+
+Fix (CI run 52): explicit types on liveCall/live/liveChat/webSearch/onnxWake/personalWake (recursive type inference error).
