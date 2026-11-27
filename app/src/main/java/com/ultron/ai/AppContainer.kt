@@ -159,7 +159,7 @@ class AppContainer(private val app: Application) {
         onMouth = { cloudVoice.pushExternalMouth(it) },
         onFirstAudioMs = { latency.recordFirstAudio(it) },
     )
-    val live = com.ultron.ai.platform.live.LiveSessionEngine(app, appScope, settings, mic, transcriber, turns, engine, tts, cloudVoice, diagnostics, broker, personalWake, liveStt, liveCall, com.ultron.ai.voice.AndroidAudioSessionManager(app))
+    val live = com.ultron.ai.platform.live.LiveSessionEngine(app, appScope, settings, mic, transcriber, turns, engine, tts, cloudVoice, diagnostics, broker, personalWake, liveStt, liveCall, com.ultron.ai.voice.AndroidAudioSessionManager(app), com.ultron.ai.platform.live.LocalTranscriber(app))
 }
 
 data class PendingPrompt(val text: String, val autoSend: Boolean, val study: Boolean = false)

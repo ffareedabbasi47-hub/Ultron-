@@ -94,3 +94,10 @@ NOT done yet (next round): media-aware audio focus audit/echo (Part 1), Fardeen 
 
 ## Build fix (CI run #47)
 Root cause: `val P = android.provider.ContactsContract.CommonDataKinds.Phone` - `Phone` is a class, not an object, so it cannot be stored in a variable and `P.CONTENT_URI` etc. do not resolve (8 compiler errors, DeviceActionRunner.kt:189-194). Fix: fully qualified `ContactsContract.CommonDataKinds.Phone.*`. Also made `toggleIntents` type-safe (was an `emptyArray()` inside a spread `when`, a likely second compile error). CI compile of the rest is still unverified.
+
+---
+## Update 7 (Real functionality restoration - local mode without Gemini key)
+Audit finding (root cause of "needs Gemini key"): wake detection was already key-free (MFCC/DTW templates), BUT after the wake the spoken command AND the haan/nahi confirmations were transcribed ONLY by `GeminiTranscriber` (cloud). Without a key the user could wake ULTRON but not give any command.
+Fix: `LocalTranscriber` (Android SpeechRecognizer fed with the already-captured utterance via `EXTRA_AUDIO_SOURCE`, Android 13+; single mic pipeline kept) is used whenever there is no Gemini key/consent (`transcribeAny`, both the command path and the confirmation path). Local commands (`CommandParser` -> `ActionValidator` -> `DeviceActionRunner`) already ran before any cloud check in `AssistantEngine.respond`. General-knowledge questions without a key now say honestly that advanced AI is not configured.
+Limits: Android < 13 has no local transcription of captured audio (message says so); Google's recogniser may need internet or an offline language pack; en-IN Roman output suits Hinglish commands best (Devanagari output is not parsed); no on-device LLM exists in this build (none claimed).
+Not device-tested. Calling / messaging / YouTube / alarm code is the v5-v7 code; the old APK the user tested before these versions did not contain them.

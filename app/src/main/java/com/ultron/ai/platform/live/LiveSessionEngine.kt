@@ -76,6 +76,7 @@ class LiveSessionEngine(
     private val liveStt: LiveTranscriber? = null,
     private val call: LiveCall? = null,
     private val audioSession: com.ultron.ai.voice.AudioSessionManager? = null,
+    private val localStt: LocalTranscriber? = null,
 ) : com.ultron.ai.voice.VoiceSessionController {
 
     /** True while a phone-call style (Gemini Live) conversation owns the session. */
@@ -196,13 +197,20 @@ class LiveSessionEngine(
         // Offline wake-only: no Gemini key / cloud consent, but the user's own wake recordings exist. Nothing is uploaded;
         // the mic only feeds the on-phone wake matcher until the wake phrase is heard.
         if (armed) {
-            _message.value = if (cloudReady) null else "Cloud AI/Gemini key off hai: sirf offline wake word chal raha hai (kuch upload nahi hota)."
+            _message.value = if (cloudReady) null else "Local mode: wake word offline hai; command Android ke voice recognition se samjhe jayenge (Android 13+). Gemini key ki zarurat nahi."
             move(LiveState.SLEEP)
             publishDiag { it.copy(commMode = s.fullDuplex, note = if (cloudReady) "Wake-first: wake word ka intezar" else "Offline wake-only mode") }
             return
         }
         liveStt?.connect() // pre-connect so the first sentence is already fast
         publishDiag { it.copy(commMode = s.fullDuplex, note = if (s.fullDuplex) "Full-duplex: echo canceller par bharosa (device-dependent)" else "Safe mode: ULTRON bolte waqt aapki awaaz ignore hoti hai") }
+    }
+
+    /** Cloud (Gemini) when a key + consent exist; otherwise the phone's own recogniser on the SAME captured audio. Basic commands never need a key. */
+    private suspend fun transcribeAny(pcm: ShortArray): Transcript {
+        val cloud = cfg.cloudConsent && settings.geminiKey() != null
+        if (cloud || localStt == null) return transcriber.transcribe(pcm, MicCapture.SAMPLE_RATE)
+        return localStt.transcribe(pcm, MicCapture.SAMPLE_RATE)
     }
 
     // ---------- phone-call mode ----------
@@ -309,7 +317,7 @@ class LiveSessionEngine(
                         val pcm = e.pcm
                         if (streaming) { liveStt?.cancel(); streaming = false }
                         scope.launch(Dispatchers.Default) {
-                            val tr = transcriber.transcribe(pcm, MicCapture.SAMPLE_RATE)
+                            val tr = transcribeAny(pcm)
                             if (tr is Transcript.Text) { verifiedSpeechAt = true; broker.answerFromText(tr.text) }
                         }
                         restoreAfterDiscard()
@@ -368,7 +376,7 @@ class LiveSessionEngine(
         val t0 = now()
         // Fast path: text already streamed while the user was talking. Anything unusual -> the one-shot transcriber.
         val streamed = if (!wasAsleep && stt != null) kotlinx.coroutines.withTimeoutOrNull(3000) { stt.await() } else null
-        val tr: Transcript = streamTranscript(streamed) ?: transcriber.transcribe(pcm, MicCapture.SAMPLE_RATE)
+        val tr: Transcript = streamTranscript(streamed) ?: transcribeAny(pcm)
         publishDiag { it.copy(lastTranscribeMs = now() - t0, note = if (streamTranscript(streamed) != null) "stt: stream" else "stt: upload") }
         val text = when (tr) {
             is Transcript.Text -> tr.text
@@ -417,7 +425,7 @@ class LiveSessionEngine(
             if (talking) move(LiveState.SPEAKING) else if (busy) move(LiveState.THINKING)
             if (!busy && !talking) break
         }
-        if (turns.state.value.needsConsent) _message.value = "Cloud AI ki permission chahiye."
+        if (turns.state.value.needsConsent) _message.value = "Ye sawal advanced AI maangta hai, aur wo configured nahi hai (Gemini key + permission). Phone ke commands (call, alarm, settings, YouTube...) bina key ke chalte hain."
         turns.state.value.error?.let { _message.value = it.message }
         if (_state.value == LiveState.THINKING || _state.value == LiveState.SPEAKING) move(LiveState.LISTENING)
         clock.reset(now())
