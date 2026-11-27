@@ -42,6 +42,7 @@ object CommandParser {
     private val youtubeFirst = Regex("^(?:youtube|yt)\\s+(?:pe|par|per|on)\\s+(.+?)(?:\\s+$youtubeVerbs)?$")
     private val youtubeLast = Regex("^(.+?)\\s+(?:youtube|yt)\\s+(?:pe|par|per|me|mein|on)(?:\\s+$youtubeVerbs)?$")
     private val ytPlayTopic = Regex("^(?:mujhe\\s+)?(.+?)\\s+(?:video\\s+)?(?:chalao|chala do|chala de|play karo|play kar do|laga do|lagao)$")
+    private val ytVideoAbout = Regex("^(?:play|show|open|find)\\s+(?:me\\s+)?(?:a\\s+|an\\s+|some\\s+|the\\s+)?(?:youtube\\s+)?videos?\\s+(?:about|on|of|for|related to)\\s+(.+?)(?:\\s+on\\s+youtube)?$")
     private val playQuery = Regex("^(?:play|chalao|chala do|gaana|gana)\\s+(.+)$")
 
     private val openEn = Regex("^(?:open|launch|start)\\s+(.+)$")
@@ -120,6 +121,7 @@ object CommandParser {
 
         youtubeFirst.matchEntire(t)?.let { return UltronAction.YouTubeSearch(it.groupValues[1].trim()) }
         youtubeLast.matchEntire(t)?.let { return UltronAction.YouTubeSearch(it.groupValues[1].trim()) }
+        ytVideoAbout.matchEntire(t)?.let { return UltronAction.YouTubeSearch(it.groupValues[1].trim()) }
         playQuery.matchEntire(t)?.let { return UltronAction.YouTubeSearch(it.groupValues[1].trim()) }
 
         ytPlayTopic.matchEntire(t)?.let { m ->
@@ -170,13 +172,26 @@ object CommandParser {
     private val mPrev = Regex("^(?:previous|prev|pichla|pichli|peechla|peechli)(?:\\s+(?:video|song|gaana|track))?(?:\\s+(?:chalao|karo|laga do|lagao))?$")
     private val ytClose = Regex("^(?:youtube|yt)\\s+(?:band|close|stop)$DO2$|^(?:close|band kar|band karo)\\s+(?:youtube|yt)$")
 
-    private val msgKo = Regex("^(?:whatsapp\\s+(?:par|pe)\\s+)?(.+?)\\s+ko\\s+(?:whatsapp\\s+(?:par\\s+)?)?(?:message|sms|msg|text)\\s+(?:bhejo|bhej do|bhejna|karo|kar do|send karo|likho|draft karo)(?:\\s+(?:ki|ke)\\s+(.+))?$")
-    private val msgEn = Regex("^(?:send|text)\\s+(?:a\\s+)?(?:message|sms|text\\s+)?\\s*to\\s+(.+?)(?:\\s+(?:saying|that|ki)\\s+(.+))?$")
+    private val msgKo = Regex("^(?:whatsapp\\s+(?:par|pe)\\s+)?(.+?)\\s+ko\\s+(?:whatsapp\\s+(?:par\\s+)?)?(?:message|sms|msg|text)\\s+(?:bhejo|bhej do|bhejna|karo|kar do|send karo|likho|draft karo)(?:\\s*[:\\-]\\s*|\\s+(?:ki|ke)\\s+)?(.+)?$")
+    private val msgEn = Regex("^(?:send|text|message)\\s+(?:a\\s+)?(?:(?:whatsapp|sms|text)\\s+)?(?:message\\s+|msg\\s+|sms\\s+)?(?:on\\s+whatsapp\\s+)?to\\s+(.+?)(?:\\s*[:\\-]\\s*|\\s+(?:saying|that|ki|ke)\\s+)(.+)$|^(?:send|text|message)\\s+(?:a\\s+)?(?:(?:whatsapp|sms|text)\\s+)?(?:message\\s+|msg\\s+|sms\\s+)?(?:on\\s+whatsapp\\s+)?to\\s+(.+)$")
+    private val msgWaDirect = Regex("^whatsapp\\s+(?:to\\s+)?(.+?)\\s*[:\\-]\\s*(.+)$")
 
     internal fun parseMessage(t: String): UltronAction? {
-        val m = msgKo.matchEntire(t) ?: msgEn.matchEntire(t) ?: return null
-        val name = m.groupValues[1].trim(); if (name.isEmpty()) return null
-        return UltronAction.SendMessage(name, m.groupValues[2].trim().ifEmpty { null }, t.contains("whatsapp"))
+        val m = msgKo.matchEntire(t)
+        val (name, body) = when {
+            m != null -> m.groupValues[1] to m.groupValues[2]
+            else -> {
+                val e = msgEn.matchEntire(t)
+                val w = if (e == null) msgWaDirect.matchEntire(t) else null
+                when {
+                    e != null -> if (e.groupValues[1].isNotEmpty()) e.groupValues[1] to e.groupValues[2] else e.groupValues[3] to ""
+                    w != null -> w.groupValues[1] to w.groupValues[2]
+                    else -> return null
+                }
+            }
+        }
+        val n = name.trim(); if (n.isEmpty()) return null
+        return UltronAction.SendMessage(n, body.trim().ifEmpty { null }, t.contains("whatsapp"))
     }
 
     private val alarmSetVerb = Regex("\\b(lagao|laga do|lagana|laga de|lagado|set|kar do|karo|bana do|rakh do|chahiye|laga dena)\\b")

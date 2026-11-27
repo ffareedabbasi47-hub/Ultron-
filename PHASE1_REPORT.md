@@ -121,3 +121,9 @@ Capability Registry: domain/Capabilities.kt (+ CapabilityEnv built from real per
 Tests: 103/103 JVM logic OK. NOT verified: Android compile, any on-device check, real search results, contrast measured by eye only on the video frames.
 
 Fix (CI run 52): explicit types on liveCall/live/liveChat/webSearch/onnxWake/personalWake (recursive type inference error).
+
+## Update 11 - Calling / WhatsApp / YouTube English commands
+Root causes found in the parser: (1) "call my father" searched a contact literally named "my father" (possessive + relation words never matched "Papa"); (2) "WhatsApp ... message bhejo: <text>" and "Send WhatsApp message to my father: <text>" did not parse (colon form / 'whatsapp' before 'message'); (3) "Play a video about X" searched "a video about X".
+Fix: ContactMatcher strips my/mere/..., expands relation groups (father/papa/dad/abbu..., mother/mummy/maa..., etc.), literal name first, never picks between different people. CommandParser: colon/saying message forms, `whatsapp <name>: <text>`, `play/show a video about X`.
+Tests: 142/142 JVM logic (parser + domain) OK, 8 new in EnglishCommandTest. Not verified: Android compile (CI #52 failed before the v12 fix), any device behaviour.
+Unchanged/blocked, stated plainly: lip-sync and arm pose need rigged models (both GLBs have 0 skins/bones/morph targets; whole-body motion only); neural wake needs a trained hey_ultron.onnx; full per-screen theme audit not done.

@@ -25,7 +25,25 @@ object ContactMatcher {
 
     private fun same(a: String, b: String) = a.takeLast(10) == b.takeLast(10)
 
+    private val possessive = Regex("^(?:my|mere|meri|mera|apne|apni|apna|our)\\s+")
+    private val relationGroups: List<Set<String>> = listOf(
+        setOf("father", "papa", "pappa", "dad", "daddy", "abbu", "abu", "abba", "baba", "pitaji", "papaji", "pita"),
+        setOf("mother", "mom", "mommy", "mummy", "maa", "ma", "ammi", "amma", "mata", "mataji", "mummyji"),
+        setOf("brother", "bhai", "bhaiya", "bro"),
+        setOf("sister", "behen", "behan", "didi", "sis"),
+        setOf("wife", "biwi", "patni"), setOf("husband", "pati"),
+        setOf("grandfather", "dada", "dadu", "nana", "nanu"), setOf("grandmother", "dadi", "nani"),
+    )
+
+    /** "my father" -> also tries papa / dad / abbu ...: contacts are saved under many names. Literal name is always tried first. */
     fun find(query: String, entries: List<ContactEntry>): ContactMatch {
+        val q0 = norm(query).replace(possessive, "").trim()
+        val candidates = buildList { add(q0); relationGroups.firstOrNull { q0 in it }?.forEach { if (it != q0) add(it) } }
+        for (c in candidates) { val r = findOne(c, entries); if (r !is ContactMatch.None) return r }
+        return ContactMatch.None
+    }
+
+    private fun findOne(query: String, entries: List<ContactEntry>): ContactMatch {
         val q = norm(query)
         if (q.isEmpty()) return ContactMatch.None
         val qTokens = q.split(' ')
