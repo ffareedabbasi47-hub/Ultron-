@@ -10,6 +10,7 @@ navigation = "2.8.5"
 room = "2.6.1"
 datastore = "1.1.1"
 okhttp = "4.12.0"
+onnxruntime = "1.19.2"
 serialization = "1.7.3"
 coroutines = "1.9.0"
 work = "2.10.0"
@@ -42,6 +43,7 @@ androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref
 androidx-sqlite-ktx = { module = "androidx.sqlite:sqlite-ktx", version.ref = "sqliteKtx" }
 sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntime" }
 okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "okhttp" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }

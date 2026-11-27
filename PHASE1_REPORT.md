@@ -101,3 +101,9 @@ Audit finding (root cause of "needs Gemini key"): wake detection was already key
 Fix: `LocalTranscriber` (Android SpeechRecognizer fed with the already-captured utterance via `EXTRA_AUDIO_SOURCE`, Android 13+; single mic pipeline kept) is used whenever there is no Gemini key/consent (`transcribeAny`, both the command path and the confirmation path). Local commands (`CommandParser` -> `ActionValidator` -> `DeviceActionRunner`) already ran before any cloud check in `AssistantEngine.respond`. General-knowledge questions without a key now say honestly that advanced AI is not configured.
 Limits: Android < 13 has no local transcription of captured audio (message says so); Google's recogniser may need internet or an offline language pack; en-IN Roman output suits Hinglish commands best (Devanagari output is not parsed); no on-device LLM exists in this build (none claimed).
 Not device-tested. Calling / messaging / YouTube / alarm code is the v5-v7 code; the old APK the user tested before these versions did not contain them.
+
+## Update 8 - Neural offline wake (ONNX) scaffold
+Files: platform/live/OnnxWake.kt (new), domain/wake/WakeScoreGate.kt (new), LiveSessionEngine.kt, AppContainer.kt, gradle/libs.versions.toml, app/build.gradle.kts (+onnxruntime-android 1.19.2), assets/wake/README.md, test WakeScoreGateTest (6 tests).
+Status: unit tests 89/89 OK (JVM harness). NOT compiled with Android SDK/ORT here (Maven/GitHub blocked in sandbox), NOT run on device, and NO hey_ultron.onnx exists - without the 3 model files the engine stays off and the older template matcher keeps working.
+Mic ownership: one AudioRecord (MicCapture) always; frames are fed to OnnxWake only in SLEEP. No second reader exists. Live call/STT use the same recorder after wake.
+Not done: separate Live-consent revoke UI, ColorOS battery guide screen, Live state-machine rename (existing LiveState kept), emulator/device tests.

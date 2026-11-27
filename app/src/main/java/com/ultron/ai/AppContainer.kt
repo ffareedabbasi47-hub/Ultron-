@@ -126,6 +126,7 @@ class AppContainer(private val app: Application) {
     val liveStt = com.ultron.ai.platform.live.LiveTranscriber(settings, http, diagnostics, appScope)
     /** The one live-conversation owner (see LiveSessionEngine). */
     val personalWake = com.ultron.ai.platform.live.PersonalWake(app, mic, diagnostics)
+    val onnxWake = com.ultron.ai.platform.live.OnnxWake(app, diagnostics)
     /** Phone-call style conversation (Gemini Live). Local actions requested by the model go through the same validated runner. */
     val liveCall = com.ultron.ai.platform.live.LiveCall(
         appScope, settings, http, diagnostics,
@@ -159,7 +160,7 @@ class AppContainer(private val app: Application) {
         onMouth = { cloudVoice.pushExternalMouth(it) },
         onFirstAudioMs = { latency.recordFirstAudio(it) },
     )
-    val live = com.ultron.ai.platform.live.LiveSessionEngine(app, appScope, settings, mic, transcriber, turns, engine, tts, cloudVoice, diagnostics, broker, personalWake, liveStt, liveCall, com.ultron.ai.voice.AndroidAudioSessionManager(app), com.ultron.ai.platform.live.LocalTranscriber(app))
+    val live = com.ultron.ai.platform.live.LiveSessionEngine(app, appScope, settings, mic, transcriber, turns, engine, tts, cloudVoice, diagnostics, broker, personalWake, liveStt, liveCall, com.ultron.ai.voice.AndroidAudioSessionManager(app), com.ultron.ai.platform.live.LocalTranscriber(app), onnxWake)
 }
 
 data class PendingPrompt(val text: String, val autoSend: Boolean, val study: Boolean = false)

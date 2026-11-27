@@ -28,6 +28,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -77,6 +78,7 @@ class LiveSessionEngine(
     private val call: LiveCall? = null,
     private val audioSession: com.ultron.ai.voice.AudioSessionManager? = null,
     private val localStt: LocalTranscriber? = null,
+    private val onnx: OnnxWake? = null,
 ) : com.ultron.ai.voice.VoiceSessionController {
 
     /** True while a phone-call style (Gemini Live) conversation owns the session. */
@@ -170,10 +172,11 @@ class LiveSessionEngine(
         clock = SleepClock(s.sleepTimeout.millis).also { it.reset(now()) }
         applyAudioRoute(s)
         val cloudReady = s.cloudConsent && settings.geminiKey() != null
+        val neural = onnx != null && withContext(kotlinx.coroutines.Dispatchers.IO) { onnx.prepare() }
         // Armed = the mic only feeds the on-phone wake matcher. It is used when there is no cloud permission/key at all
         // (nothing could be transcribed anyway) or when the user chose "wake first". Phone-call mode streams ALL audio, so it never starts armed.
         val mode = com.ultron.ai.domain.live.VoiceModePolicy.decide(
-            wakeOn = s.wakePersonal, wakeReady = personal?.ready == true, cloudReady = cloudReady, wakeFirst = s.wakeFirst,
+            wakeOn = s.wakePersonal, wakeReady = neural || personal?.ready == true, cloudReady = cloudReady, wakeFirst = s.wakeFirst,
             liveCallEnabled = s.liveCall, callAvailable = call != null, forceNormal = forceNormal,
         )
         if (mode == com.ultron.ai.domain.live.VoiceMode.NEEDS_WAKE_SETUP) {
@@ -199,6 +202,7 @@ class LiveSessionEngine(
         if (armed) {
             _message.value = if (cloudReady) null else "Local mode: wake word offline hai; command Android ke voice recognition se samjhe jayenge (Android 13+). Gemini key ki zarurat nahi."
             move(LiveState.SLEEP)
+            armNeural()
             publishDiag { it.copy(commMode = s.fullDuplex, note = if (cloudReady) "Wake-first: wake word ka intezar" else "Offline wake-only mode") }
             return
         }
@@ -290,6 +294,7 @@ class LiveSessionEngine(
     private fun onFrame(frame: ShortArray) {
         val st = _state.value
         if (st == LiveState.PAUSED || st == LiveState.STOPPED) return
+        if (st == LiveState.SLEEP) onnx?.feed(frame) // neural wake only sees audio while armed; nothing is uploaded
         val duplex = cfg.fullDuplex
         val speakingNow = gate.assistantSpeaking
         // Level meter for the UI: real input level, only while it is meaningful.
@@ -438,9 +443,26 @@ class LiveSessionEngine(
     }
 
     // ---------- lifecycle ----------
+    /** Neural wake callback: same accepted-wake path as the template matcher (cooldown, one trigger, edge-light event). */
+    private fun armNeural() {
+        val n = onnx ?: return
+        if (!n.ready) return
+        n.arm(cfg.wakeSensitivity) { score ->
+            scope.launch {
+                if (_state.value == LiveState.SLEEP && wakeCooldown.allow(now())) {
+                    diagnostics.log("live", "neural wake accepted score=%.2f".format(score))
+                    wakeInternal()
+                    _wake.tryEmit(WakePhrase.HEY)
+                    greet(WakePhrase.HEY)
+                }
+            }
+        }
+    }
+
     private fun goToSleep() {
         if (!move(LiveState.SLEEP)) return
-        val localWake = cfg.wakePersonal && personal?.ready == true
+        armNeural()
+        val localWake = (cfg.wakePersonal && personal?.ready == true) || onnx?.ready == true
         if (!cfg.wakeCloudCheck && !localWake) {
             // No wake-check opted in: nothing could ever use the audio, so the mic is released (and restarted on wake).
             mic.stop(); liveStt?.close(); streaming = false
@@ -468,6 +490,7 @@ class LiveSessionEngine(
     }
 
     override fun stop() {
+        onnx?.disarm()
         if (_state.value == LiveState.STOPPED) return
         synchronized(stateLock) { _state.value = LiveState.STOPPED }
         processor?.cancel(); ticker?.cancel(); watcher?.cancel()
