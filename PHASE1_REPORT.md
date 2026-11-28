@@ -162,3 +162,6 @@ Tests: 166/166 JVM logic OK. Android build NOT run here; no device tests.
 
 ## Update 16 (v18) - Live core restored to v14
 User asked to return the Live system to its state 3 versions earlier (v14) because v17 failed. LiveCall, LiveSessionEngine, AndroidAudioSessionManager restored from v14; v17 failure classifier/reconnect removed. Only `lastFailure` kept so the Capability Registry compiles. LiveWire optional-param fix and WhatsApp work (v15/v16) kept.
+
+## Update 17 (v19) - Live regression investigation on top of v17
+Source comparison v9..v18 (md5 per file): endpoint, model, handshake, OkHttp client, audio pipeline unchanged in transport since v9; only setup payload grew (6 -> 15 tools, v11/v14) and v10 removed the silent fallback. Root cause NOT provable without device logs. v19 = v17 minus auto-reconnect, plus numbered stage logs (1 attempt, 2 connected, 3 setup size, 4 setupComplete, 5 first mic chunk, 6 first Gemini event, 7 audio out, 8 closed + classified cause) and mic-initialized log. Baselines kept: v14, v16, v17 zips (sha256 in chat).
