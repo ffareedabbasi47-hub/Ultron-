@@ -256,17 +256,13 @@ class LiveSessionEngine(
         call?.sendMic(frame)
     }
 
-    /**
-     * A failed Live call is reported exactly as it is: LiveCall has already classified it (stage + exception go to the debug log),
-     * the user sees the friendly reason, and the session stops. No reconnect loop and no switch to another AI engine:
-     * the stage-tagged log is what shows where the real failure is.
-     */
     private fun callFailed(reason: String) {
         scope.launch {
             if (!inCall) return@launch
+            // Honest failure: no silent switch to another AI engine. The reason stays on screen; the user restarts Live themselves.
             stop()
             _message.value = "$reason Live band hai; dobara mic dabao ya wake bolo."
-            diagnostics.log("live", "live call stopped (no fallback): $reason")
+            diagnostics.log("live", "live call failed, stopped (no fallback): $reason")
         }
     }
 
@@ -537,9 +533,6 @@ class LiveSessionEngine(
         val ownSpeech = tts.isActive() || _state.value == LiveState.SPEAKING || now() - lastOwnSpeechMs < 2000
         diagnostics.log("live", "focus $ev ownSpeech=$ownSpeech")
         if (ownSpeech) return
-        // Another app starting music/video takes focus: the Live session must NOT stop for that. Real phone calls are handled by
-        // the telephony-state poller (CallSilence), not by focus events.
-        if (inCall) { diagnostics.log("live", "focus lost to another app: Live continues"); return }
         if (ev == com.ultron.ai.voice.AudioSessionManager.FocusEvent.LOST_PERMANENT ||
             ev == com.ultron.ai.voice.AudioSessionManager.FocusEvent.LOST_TRANSIENT) {
             _message.value = "Doosri audio/call ne focus liya, isliye Live pause hua. Mic button se dobara chalao."

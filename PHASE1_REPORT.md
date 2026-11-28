@@ -165,3 +165,9 @@ User asked to return the Live system to its state 3 versions earlier (v14) becau
 
 ## Update 17 (v19) - Live regression investigation on top of v17
 Source comparison v9..v18 (md5 per file): endpoint, model, handshake, OkHttp client, audio pipeline unchanged in transport since v9; only setup payload grew (6 -> 15 tools, v11/v14) and v10 removed the silent fallback. Root cause NOT provable without device logs. v19 = v17 minus auto-reconnect, plus numbered stage logs (1 attempt, 2 connected, 3 setup size, 4 setupComplete, 5 first mic chunk, 6 first Gemini event, 7 audio out, 8 closed + classified cause) and mic-initialized log. Baselines kept: v14, v16, v17 zips (sha256 in chat).
+
+## Update 18 (v20) - v14 Live core + observation-only stage logs
+Setup payload v14 vs v19 compared (5611 vs 5693 bytes, same model/prompt/tools); no watchdog, no classifier, no retry, default OkHttp timeouts as in v14. Only numbered stage logs added.
+
+## Update 18 (v20) - v14 Live core + observation-only stage logs
+No watchdog, classifier, retry or timeout change. Stage logs 1-8 and mic-initialized only. Purpose: show on device where Live stops.
