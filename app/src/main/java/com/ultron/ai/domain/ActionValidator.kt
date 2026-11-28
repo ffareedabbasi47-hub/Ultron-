@@ -9,6 +9,9 @@ data class Validation(val ok: Boolean, val reason: String? = null) {
 
 /** Every action is validated before any platform API is touched. */
 object ActionValidator {
+    /** Longest message accepted. Longer is refused with a clear reason, never silently cut. */
+    const val MAX_MESSAGE = 4000
+
     private val appNameChars = Regex("^[\\p{L}\\p{N} .&'+\\-]{1,40}$")
     private const val MAX_REMINDER_MINUTES = 7 * 24 * 60
 
@@ -32,7 +35,7 @@ object ActionValidator {
         UltronAction.DismissAlarm -> Validation.OK
         is UltronAction.SendMessage ->
             if (action.name.isBlank() || action.name.length > 40) Validation.no("Contact ka naam 1-40 akshar ka hona chahiye.")
-            else if (action.body != null && action.body.length > 600) Validation.no("Message bahut lamba hai (600 akshar tak).") else Validation.OK
+            else if (action.body != null && action.body.length > MAX_MESSAGE) Validation.no("Message bahut lamba hai (${action.body.length} akshar; max $MAX_MESSAGE). Maine ise kaat kar nahi bheja; chhota karke batao.") else Validation.OK
         is UltronAction.CallContact ->
             if (action.name.isBlank() || action.name.length > 40) Validation.no("Contact ka naam 1-40 akshar ka hona chahiye.") else Validation.OK
         is UltronAction.CallNumber ->

@@ -18,10 +18,10 @@ class EnglishCommandTest {
         assertTrue(ContactMatcher.find("papa", twoPapas) is ContactMatch.Ambiguous)
     }
     @Test fun whatsappEnglishWithColon() {
-        assertEquals(UltronAction.SendMessage("my father", "i am coming home", true), p("Send WhatsApp message to my father: I am coming home"))
+        assertEquals(UltronAction.SendMessage("my father", "I am coming home", true), p("Send WhatsApp message to my father: I am coming home"))
     }
     @Test fun whatsappHinglishWithColon() {
-        assertEquals(UltronAction.SendMessage("father", "main ghar aa raha hoon", true), p("WhatsApp par father ko message bhejo: Main ghar aa raha hoon"))
+        assertEquals(UltronAction.SendMessage("father", "Main ghar aa raha hoon", true), p("WhatsApp par father ko message bhejo: Main ghar aa raha hoon"))
     }
     @Test fun whatsappDirect() {
         assertEquals(UltronAction.SendMessage("papa", "ghar aa jao", true), p("whatsapp papa: ghar aa jao"))

@@ -619,6 +619,45 @@ function disposeModel(){
 }
 const CT={5120:[1,'getInt8',127],5121:[1,'getUint8',255],5122:[2,'getInt16',32767],5123:[2,'getUint16',65535],5125:[4,'getUint32',0],5126:[4,'getFloat32',0]};
 const NC={SCALAR:1,VEC2:2,VEC3:3,VEC4:4,MAT4:16};
+
+// ---- Natural arm pose for static (un-rigged) models that are exported with the arms held out (A/T-pose) ----
+// These GLBs have no skeleton, so we deform the mesh itself once at load time: vertices of each arm are rotated about the
+// shoulder joint toward the body, blended smoothly (no cracks), and the normals are rotated with them. The geometry, textures
+// and look are unchanged; only the arm angle. Models whose arms already hang near the body are left untouched. ?relax=0 disables it.
+const RELAX_ARMS=new URLSearchParams(location.search).get('relax')!=='0';
+const RELAX_TARGET_DEG=16;
+function relaxArms(drawn,vmin,vmax){
+  try{
+    if(!RELAX_ARMS)return;
+    for(const n of drawn){const w=n.world;for(let i=0;i<16;i++){if(Math.abs(w[i]-(i%5===0?1:0))>1e-4){console.log('relaxArms: skipped (mesh has a transform)');return;}}}
+    let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+    for(const n of drawn){const P=n.P;for(let i=0;i<P.length;i+=3){if(P[i]<x0)x0=P[i];if(P[i]>x1)x1=P[i];if(P[i+1]<y0)y0=P[i+1];if(P[i+1]>y1)y1=P[i+1];}}
+    const H=y1-y0,cx=(x0+x1)/2;if(!(H>0))return;
+    const py=y0+0.795*H,pdx=0.125*H;                      // shoulder joint (fraction of body height)
+    // hand tip = the extreme vertex on the right side, restricted to the arm height band
+    let tu=0,tv=0;
+    for(const n of drawn){const P=n.P;for(let i=0;i<P.length;i+=3){const u=Math.abs(P[i]-cx),y=P[i+1];if(y>y0+0.30*H&&y<y0+0.95*H&&u>tu){tu=u;tv=y;}}}
+    const theta=Math.atan2(tu-pdx,py-tv)*180/Math.PI;     // arm angle from straight down
+    const alpha=(theta-RELAX_TARGET_DEG)*Math.PI/180;
+    console.log('relaxArms: arm angle '+theta.toFixed(1)+' deg, rotate '+(alpha*180/Math.PI).toFixed(1));
+    if(theta<RELAX_TARGET_DEG+6)return;                   // already hanging naturally
+    const lo=0.115*H,hi=0.215*H,ymin=y0+0.30*H;
+    const sm=(t)=>{t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};
+    const rot=(a,b,om)=>{const r=Math.hypot(a,b);if(r<1e-9)return[a,b];const f=Math.atan2(a,-b)-om;return[r*Math.sin(f),-r*Math.cos(f)];};
+    for(const n of drawn){const P=n.P,N=n.N;
+      for(let i=0;i<P.length;i+=3){
+        const dx=P[i]-cx,u=Math.abs(dx),y=P[i+1];if(y<ymin||u<lo)continue;
+        const om=alpha*sm((u-lo)/(hi-lo))*sm((y-ymin)/(0.12*H));  // fades out toward the legs
+        if(om<1e-4)continue;const s=dx<0?-1:1;
+        const r=rot(u-pdx,y-py,om);P[i]=cx+s*(pdx+r[0]);P[i+1]=py+r[1];
+        const q=rot(s*N[i],N[i+1],om);N[i]=s*q[0];N[i+1]=q[1];
+      }
+      const g=n.gl;gl.bindBuffer(gl.ARRAY_BUFFER,g.bufs[0]);gl.bufferData(gl.ARRAY_BUFFER,P,gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ARRAY_BUFFER,g.bufs[1]);gl.bufferData(gl.ARRAY_BUFFER,N,gl.STATIC_DRAW);
+    }
+    for(const n of drawn){const P=n.P;for(let i=0;i<P.length;i+=3){for(let c=0;c<3;c++){if(P[i+c]<vmin[c])vmin[c]=P[i+c];if(P[i+c]>vmax[c])vmax[c]=P[i+c];}}}
+  }catch(e){console.log('relaxArms failed: '+e.message);}
+}
 async function loadGLB(buf){
   if(buf.byteLength>60e6)throw new Error('File bahut badi hai (60 MB se zyada)');
   if(buf.byteLength<24)throw new Error('File chhoti/kharab hai');
@@ -718,7 +757,7 @@ async function loadGLB(buf){
       const N=pr.attributes.NORMAL!==undefined?readAcc(pr.attributes.NORMAL):computeNormals(P,I);
       const UV=pr.attributes.TEXCOORD_0!==undefined?readAcc(pr.attributes.TEXCOORD_0):new Float32Array(P.length/3*2);
       tris+=I.length/3;
-      const cn={name:(mesh.name||'mesh'),t:[0,0,0],r:[0,0,0],s:[1,1,1],children:[],world:M.ident(),gl:null,local:M.ident(),mat:pr.material!==undefined?mats[pr.material]:defMat,P};
+      const cn={name:(mesh.name||'mesh'),t:[0,0,0],r:[0,0,0],s:[1,1,1],children:[],world:M.ident(),gl:null,local:M.ident(),mat:pr.material!==undefined?mats[pr.material]:defMat,P,N};
       n.children.push(cn);out.push(cn);
       const vao=gl.createVertexArray();gl.bindVertexArray(vao);const bufs=[];
       const mk=(data,loc,sz)=>{const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,data,gl.STATIC_DRAW);gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,sz,gl.FLOAT,false,0,0);bufs.push(b);};
@@ -731,7 +770,9 @@ async function loadGLB(buf){
   if(!drawn.length)throw new Error('Model mein koi drawable mesh nahi mila');
   // local transforms -> world (identity fit) to measure bounds
   (function upd(n,pm){const l=n.local||M.ident();n.world=pm?M.mul(pm,l):l;for(const c of n.children)upd(c,n.world);})(mroot,null);
-  for(const n of drawn){const P=n.P;for(let i=0;i<P.length;i+=3){const w=M.point(n.world,[P[i],P[i+1],P[i+2]]);for(let c=0;c<3;c++){if(w[c]<vmin[c])vmin[c]=w[c];if(w[c]>vmax[c])vmax[c]=w[c];}}n.P=null;}
+  for(const n of drawn){const P=n.P;for(let i=0;i<P.length;i+=3){const w=M.point(n.world,[P[i],P[i+1],P[i+2]]);for(let c=0;c<3;c++){if(w[c]<vmin[c])vmin[c]=w[c];if(w[c]>vmax[c])vmax[c]=w[c];}}}
+  relaxArms(drawn,vmin,vmax);
+  for(const n of drawn){n.P=null;n.N=null;}
   const ext=[vmax[0]-vmin[0],vmax[1]-vmin[1],vmax[2]-vmin[2]];
   if(!isFinite(ext[0]+ext[1]+ext[2])||Math.max(...ext)<=0)throw new Error('Model ka size invalid hai');
   const k=Math.min(3.4/(ext[1]||1),4.6/(ext[0]||1),4.6/(ext[2]||1));

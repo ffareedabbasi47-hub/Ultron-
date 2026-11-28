@@ -174,7 +174,7 @@ class AppContainer(private val app: Application) {
                 "call_number" -> args["number"]?.let { com.ultron.ai.domain.ContactMatcher.normalizeNumber(it) }?.let { com.ultron.ai.domain.UltronAction.CallNumber(it) }
                 "send_message" -> {
                     val n = args["name"]?.trim().orEmpty(); val b = args["body"]?.trim().orEmpty()
-                    if (n.isEmpty() || b.isEmpty()) null else com.ultron.ai.domain.UltronAction.SendMessage(n.take(40), b.take(600), args["channel"]?.lowercase()?.contains("whats") == true)
+                    if (n.isEmpty() || b.isEmpty()) null else com.ultron.ai.domain.UltronAction.SendMessage(n.take(40), b, args["channel"]?.lowercase()?.contains("whats") == true)
                 }
                 "set_alarm" -> {
                     val inMin = args["in_minutes"]?.toIntOrNull()

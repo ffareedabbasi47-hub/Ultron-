@@ -46,6 +46,7 @@ class DeviceActionRunner(
     /** Set only while a Gemini Live tool call runs: the model already got the user's spoken yes inside the Live conversation
      *  (the local yes/no listener cannot hear the user then, because the mic is feeding the Live session). */
     @Volatile private var preConfirmed = false
+    private companion object { const val LONG_WA = 1500 }
 
     private suspend fun ask(question: String, speak: (String) -> Unit): Boolean = preConfirmed || broker.ask(question, speak)
 
@@ -381,17 +382,33 @@ class DeviceActionRunner(
     private suspend fun whatsappSend(name: String, number: String, body: String): ActionResult {
         var digits = number.filter { it.isDigit() }
         if (!number.startsWith("+") && digits.length == 10 && java.util.Locale.getDefault().country == "IN") digits = "91$digits"
-        val uri = Uri.parse("https://wa.me/$digits?text=" + Uri.encode(body))
+        if (body.length > com.ultron.ai.domain.ActionValidator.MAX_MESSAGE) return ActionResult(false, "Message ${body.length} akshar ka hai (max ${com.ultron.ai.domain.ActionValidator.MAX_MESSAGE}). Kaat kar nahi bheja.")
         val direct = BackgroundLaunch.canStartDirectly(context)
         var r: ActionResult? = null
         for (pkg in listOf("com.whatsapp", "com.whatsapp.w4b")) {
-            try { r = BackgroundLaunch.launch(context, Intent(Intent.ACTION_VIEW, uri).setPackage(pkg), "WhatsApp: $name", ""); break } catch (_: ActivityNotFoundException) {} catch (_: Exception) {}
+            // Short text: official wa.me link. Long text: a URL would hit length limits, so hand the FULL text over as EXTRA_TEXT
+            // (no URL limit) with the chat's jid. If WhatsApp ignores jid it shows its chat picker and the guard below blocks Send.
+            val intent = if (body.length <= LONG_WA) Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$digits?text=" + Uri.encode(body))).setPackage(pkg)
+            else Intent(Intent.ACTION_SEND).setType("text/plain").setPackage(pkg).putExtra(Intent.EXTRA_TEXT, body).putExtra("jid", "$digits@s.whatsapp.net")
+            try { r = BackgroundLaunch.launch(context, intent, "WhatsApp: $name", ""); break } catch (_: ActivityNotFoundException) {} catch (_: Exception) {}
         }
         if (r == null) return ActionResult(false, "WhatsApp is phone par nahi mila. Message nahi bheja.")
         if (!r.success || !direct) return if (!direct) ActionResult(true, "Background se WhatsApp nahi khul sakta; notification tap karo. Message abhi bheja NAHI gaya.") else r
-        if (!screen.isEnabled()) return ActionResult(true, "WhatsApp me ${name} ka message taiyar kar diya. Accessibility off hai, isliye Send aapko dabana hoga. Abhi bheja NAHI gaya.")
-        delay(3000)
-        return if (screen.clickLabel("Send")) ActionResult(true, "WhatsApp me Send dabaya. Message gaya ya nahi, WhatsApp ye nahi batata; chat me tick check karo.") else ActionResult(false, "Message taiyar hai par Send button nahi mila. Aap dabao. Abhi bheja NAHI gaya.")
+        if (!screen.isEnabled()) return ActionResult(true, "WhatsApp me ${name} ka poora message (${body.length} akshar) taiyar hai. Accessibility off hai, isliye Send aapko dabana hoga. Status: PREPARED, bheja NAHI gaya.")
+        // Press Send only when the visible screen proves: WhatsApp, right chat, exact full message in the box.
+        var verdict: com.ultron.ai.domain.WhatsAppGuard.Result = com.ultron.ai.domain.WhatsAppGuard.Result.NotReady("screen padh nahi paya")
+        for (k in 0 until 14) {
+            delay(500)
+            verdict = com.ultron.ai.domain.WhatsAppGuard.check(screen.snapshot(), name, number, body)
+            if (verdict is com.ultron.ai.domain.WhatsAppGuard.Result.Ready) break
+        }
+        val ready = verdict as? com.ultron.ai.domain.WhatsAppGuard.Result.Ready
+            ?: return ActionResult(true, "Message taiyar hai par Send nahi dabaya, kyunki ${(verdict as com.ultron.ai.domain.WhatsAppGuard.Result.NotReady).reason}. Aap check karke Send dabao. Status: PREPARED, bheja NAHI gaya.")
+        if (!screen.clickNode(ready.sendNodeId)) return ActionResult(false, "Send button dabane me Android ne click nahi hone diya. Aap dabao. Status: PREPARED.")
+        delay(1500)
+        return if (com.ultron.ai.domain.WhatsAppGuard.messageLeftBox(screen.snapshot(), body))
+            ActionResult(true, "Status: SEND TAPPED. Send dabaya aur message box khaali ho gaya (WhatsApp ne message le liya). Sent/delivered/read ka status WhatsApp ULTRON ko nahi batata; chat me tick check karo.")
+        else ActionResult(true, "Status: SEND TAPPED (pakka nahi). Send dabaya par message box abhi bhi bhara dikh raha hai; chat check karo, bheja gaya ya nahi ye main confirm nahi kar sakta.")
     }
 
     // ---- volume / brightness / DND / media ---------------------------------------------------

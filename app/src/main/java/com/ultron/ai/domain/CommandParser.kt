@@ -62,7 +62,9 @@ object CommandParser {
 
     fun parse(raw: String): UltronAction? {
         val t = normalize(raw)
-        if (t.isEmpty() || t.length > 200) return null
+        if (t.isEmpty()) return null
+        // Long input is only ever a message to send (long WhatsApp/SMS text). Everything else stays short-command only.
+        if (t.length > 200) return if (t.length <= ActionValidator.MAX_MESSAGE + 200) messageKeepingRawText(t, raw) else null
 
         if (stop.matches(t)) return UltronAction.StopSpeaking
 
@@ -79,7 +81,7 @@ object CommandParser {
         clickHi.matchEntire(t)?.let { m -> return UltronAction.Click((m.groupValues[1].ifEmpty { m.groupValues[2] }).trim()) }
 
         parseAlarm(t)?.let { return it }
-        parseMessage(t)?.let { return it }
+        messageKeepingRawText(t, raw)?.let { return it }
         parseCall(t)?.let { return it }
         parseToggle(t)?.let { return it }
         parseDevice(t)?.let { return it }
@@ -175,6 +177,16 @@ object CommandParser {
     private val msgKo = Regex("^(?:whatsapp\\s+(?:par|pe)\\s+)?(.+?)\\s+ko\\s+(?:whatsapp\\s+(?:par\\s+)?)?(?:message|sms|msg|text)\\s+(?:bhejo|bhej do|bhejna|karo|kar do|send karo|likho|draft karo)(?:\\s*[:\\-]\\s*|\\s+(?:ki|ke)\\s+)?(.+)?$")
     private val msgEn = Regex("^(?:send|text|message)\\s+(?:a\\s+)?(?:(?:whatsapp|sms|text)\\s+)?(?:message\\s+|msg\\s+|sms\\s+)?(?:on\\s+whatsapp\\s+)?to\\s+(.+?)(?:\\s*[:\\-]\\s*|\\s+(?:saying|that|ki|ke)\\s+)(.+)$|^(?:send|text|message)\\s+(?:a\\s+)?(?:(?:whatsapp|sms|text)\\s+)?(?:message\\s+|msg\\s+|sms\\s+)?(?:on\\s+whatsapp\\s+)?to\\s+(.+)$")
     private val msgWaDirect = Regex("^whatsapp\\s+(?:to\\s+)?(.+?)\\s*[:\\-]\\s*(.+)$")
+
+    /** t is lower-cased/punctuation-trimmed for matching; the message itself must keep the user's exact text. */
+    private fun messageKeepingRawText(t: String, raw: String): UltronAction? {
+        val m = parseMessage(t) as? UltronAction.SendMessage ?: return null
+        val body = m.body ?: return m
+        val rl = raw.lowercase()
+        var i = rl.indexOf(body)
+        if (i < 0) i = rl.indexOf(body.take(12)) // politeness words inside the text were removed from t
+        return if (i >= 0) m.copy(body = raw.substring(i).trim()) else m
+    }
 
     internal fun parseMessage(t: String): UltronAction? {
         val m = msgKo.matchEntire(t)

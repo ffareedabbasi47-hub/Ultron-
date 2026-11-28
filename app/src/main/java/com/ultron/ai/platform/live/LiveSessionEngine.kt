@@ -532,6 +532,9 @@ class LiveSessionEngine(
         val ownSpeech = tts.isActive() || _state.value == LiveState.SPEAKING || now() - lastOwnSpeechMs < 2000
         diagnostics.log("live", "focus $ev ownSpeech=$ownSpeech")
         if (ownSpeech) return
+        // Another app starting music/video takes focus: the Live session must NOT stop for that. Real phone calls are handled by
+        // the telephony-state poller (CallSilence), not by focus events.
+        if (inCall) { diagnostics.log("live", "focus lost to another app: Live continues"); return }
         if (ev == com.ultron.ai.voice.AudioSessionManager.FocusEvent.LOST_PERMANENT ||
             ev == com.ultron.ai.voice.AudioSessionManager.FocusEvent.LOST_TRANSIENT) {
             _message.value = "Doosri audio/call ne focus liya, isliye Live pause hua. Mic button se dobara chalao."

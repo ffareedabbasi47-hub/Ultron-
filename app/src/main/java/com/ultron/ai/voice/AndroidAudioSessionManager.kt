@@ -27,7 +27,7 @@ class AndroidAudioSessionManager(context: Context) : AudioSessionManager {
     @Synchronized
     override fun acquire(onFocus: (AudioSessionManager.FocusEvent) -> Unit): Boolean {
         release()
-        val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+        val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK) // duck other media, do not pause it
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build(),
             )
