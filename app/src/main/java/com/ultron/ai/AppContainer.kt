@@ -133,6 +133,13 @@ class AppContainer(private val app: Application) {
         listOf(com.ultron.ai.platform.live.GeminiGroundingProvider(webSearch), com.ultron.ai.platform.live.WikipediaProvider(http)),
     )
     /** Real facts about this phone for the Capability Registry. */
+    /** Real connectivity (an active network that reports internet capability). True when the check itself is unavailable. */
+    fun networkIsUp(): Boolean = try {
+        (app.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager)?.let { cm ->
+            cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        } ?: true
+    } catch (_: Exception) { true }
+
     suspend fun capabilityEnv(): com.ultron.ai.domain.CapabilityEnv {
         val s = settings.settings.first()
         fun granted(p: String) = androidx.core.content.ContextCompat.checkSelfPermission(app, p) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -223,6 +230,7 @@ class AppContainer(private val app: Application) {
         },
         onMouth = { cloudVoice.pushExternalMouth(it) },
         onFirstAudioMs = { latency.recordFirstAudio(it) },
+        networkUp = { networkIsUp() },
     )
     val live: com.ultron.ai.platform.live.LiveSessionEngine = com.ultron.ai.platform.live.LiveSessionEngine(app, appScope, settings, mic, transcriber, turns, engine, tts, cloudVoice, diagnostics, broker, personalWake, liveStt, liveCall, com.ultron.ai.voice.AndroidAudioSessionManager(app), com.ultron.ai.platform.live.LocalTranscriber(app), onnxWake)
     val liveChat: com.ultron.ai.platform.live.LiveChat = com.ultron.ai.platform.live.LiveChat(appScope, liveCall, settings, db.conversations(), engine, turns, diagnostics) { live.voiceCallActive }

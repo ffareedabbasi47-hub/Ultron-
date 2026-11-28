@@ -152,3 +152,10 @@ Fixes: max 4000 chars, longer is REFUSED (never cut); long input only accepted a
 Live vs media: any focus loss while a Live call runs used to pause the call (YouTube/music starting took focus -> ULTRON went silent). Now ignored during a Live call (phone calls still handled by the telephony poller); focus request is GAIN_TRANSIENT_MAY_DUCK so other media is ducked, not paused. AEC/NS were already enabled in MicCapture.
 Avatar: both GLBs are static meshes (0 skins/bones/morph targets) -> no real lip-sync/fingers possible. Arms-out pose fixed by a one-time mesh deformation at load (rotate each arm about the shoulder joint, smooth blend, normals rotated). Verified by actual WebGL render in headless Chromium (software GL): UltronXPS arm angle 48 deg -> 16 deg, Infinity 32 -> 16; no cracks seen. See ultron_v16_arm_pose_before_after.png. ?relax=0 disables.
 Tests: 166/166 JVM logic OK. Android build NOT run here; no device tests.
+
+## Update 15 (v17) - Live connection recovery
+- Audit: OkHttp default connect/write timeout was 10 s; a Live failure was classified by nothing, never retried (call just stopped), and a missing setupComplete waited forever (read timeout 0). A bare SocketTimeoutException in OkHttp can be connect, write or ping/pong; the phase now decides.
+- New `domain/live/LiveFailure.kt`: LiveFailureClassifier (phase-aware), LiveStatus (friendly texts), LiveRetryPolicy (4 tries, 1.5/3/6/12 s).
+- `LiveCall`: connect/write 15 s, 15 s setup watchdog, single `fail()` path, technical detail only in diagnostics (`lastTechnical`), real network check, first-mic-chunk log.
+- `LiveSessionEngine`: bounded reconnect, mic stays open, no duplicate session, no fallback to another AI; stops honestly after the last try.
+- Tests: LiveFailureTest (8). Total 174/174 JVM. NOT built for Android, NOT device-tested.
