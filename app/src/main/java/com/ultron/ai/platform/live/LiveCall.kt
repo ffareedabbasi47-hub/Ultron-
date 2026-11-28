@@ -6,8 +6,6 @@ import android.media.AudioTrack
 import android.util.Base64
 import com.ultron.ai.core.diagnostics.DiagnosticsLog
 import com.ultron.ai.data.settings.SettingsRepository
-import com.ultron.ai.domain.live.LiveFailureClassifier
-import com.ultron.ai.domain.live.LiveStatus
 import com.ultron.ai.domain.live.LiveWire
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -45,8 +43,6 @@ class LiveCall(
     private val onMouth: (Float) -> Unit,
     /** Measured: first words of the user's turn heard by the server -> first audio chunk of the reply (ms). */
     private val onFirstAudioMs: (Long) -> Unit = {},
-    /** Real connectivity check (ConnectivityManager) used to tell "no internet" from "server problem". */
-    private val networkUp: () -> Boolean = { true },
 ) {
     @Volatile private var heardAt = 0L
     interface Listener {
@@ -58,16 +54,7 @@ class LiveCall(
         fun onEnded()
     }
 
-    // Connect/write get a realistic mobile-network budget (default was 10 s). Read stays 0 (a Live socket is idle while the user
-    // listens); instead a setup watchdog and the ping/pong check detect a dead session, so nothing hangs forever.
-    private val client = baseClient.newBuilder()
-        .connectTimeout(15, TimeUnit.SECONDS).writeTimeout(15, TimeUnit.SECONDS)
-        .pingInterval(20, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS).build()
-    @Volatile private var phase = "connect"
-    @Volatile private var sentChunks = 0L
-    private var setupWatch: Job? = null
-    /** Technical detail of the last failure (debug only; the UI shows the friendly text). */
-    @Volatile var lastTechnical: String? = null
+    private val client = baseClient.newBuilder().pingInterval(20, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS).build()
     private val lock = Any()
     @Volatile private var ws: WebSocket? = null
     @Volatile private var ready = false
@@ -83,7 +70,6 @@ class LiveCall(
     private var monitor: Job? = null
     @Volatile private var volume = 1f
     @Volatile private var communication = false
-    private companion object { const val SETUP_WAIT_MS = 15_000L }
 
     val isActive: Boolean get() = ws != null
     val isReady: Boolean get() = ready && ws != null
@@ -97,8 +83,7 @@ class LiveCall(
     @Volatile var sink: Sink? = null
     /** Typed-message replies the user did not want spoken: audio is dropped (text still arrives as transcript). */
     @Volatile var muteAudio = false
-    private val handledTools = java.util.Collections.synchronizedSet(HashSet<String>())
-    /** Last connection failure (cleared when a session becomes ready): feeds the Capability Registry ERROR state. */
+    /** Last connection failure text (kept so the Capability Registry still compiles against the v14 Live core). */
     @Volatile var lastFailure: String? = null
 
     /** Hand the already-running session to another owner (voice engine) WITHOUT reconnecting: same socket, same context. */
@@ -113,21 +98,19 @@ class LiveCall(
 
     fun start(l: Listener, systemPrompt: String, voice: String, volume: Float, communication: Boolean) {
         stop()
-        phase = "connect"; sentChunks = 0
         listener = l; this.volume = volume; this.communication = communication
         val gen = ++generation
         scope.launch {
             val s = settings.settings.first()
             val key = settings.geminiKey()
-            if (!s.cloudConsent || key == null) { l.onFailed("Live ke liye Cloud AI allow aur Gemini key chahiye.", false); return@launch }
-            if (!networkUp()) { lastTechnical = "phase=connect no network"; lastFailure = LiveStatus.NO_NETWORK.text; l.onFailed(LiveStatus.NO_NETWORK.text, true); return@launch }
+            if (!s.cloudConsent || key == null) { l.onFailed("Live call ke liye Cloud AI allow aur Gemini key chahiye.", false); return@launch }
             try {
                 val req = Request.Builder().url("${LiveWire.HOST_PATH}?key=$key").build()
                 val sock = client.newWebSocket(req, Handler(gen, systemPrompt, voice))
                 synchronized(lock) { if (gen == generation) ws = sock else sock.cancel() }
             } catch (e: Exception) {
                 diagnostics.log("call", "connect failed ${e.javaClass.simpleName}")
-                l.onFailed(LiveStatus.FAILED.text, true)
+                l.onFailed("Live call connect nahi hua.", true)
             }
         }
         startPlayer(gen)
@@ -138,7 +121,6 @@ class LiveCall(
         val w: WebSocket?
         synchronized(lock) { w = ws; ws = null; ready = false; out.clear() }
         try { w?.close(1000, "bye") } catch (_: Exception) {}
-        setupWatch?.cancel(); setupWatch = null
         player?.cancel(); monitor?.cancel(); player = null; monitor = null
         audioQueue.close(); audioQueue = Channel(Channel.UNLIMITED)
         releaseTrack()
@@ -158,22 +140,16 @@ class LiveCall(
         val c = chunk ?: return
         val bb = ByteBuffer.allocate(c.size * 2).order(ByteOrder.LITTLE_ENDIAN)
         for (s in c) bb.putShort(s)
-        if (w.send(LiveWire.audio(Base64.encodeToString(bb.array(), Base64.NO_WRAP))) && sentChunks++ == 0L) diagnostics.log("call", "first mic chunk sent to Live (${c.size} samples)")
+        w.send(LiveWire.audio(Base64.encodeToString(bb.array(), Base64.NO_WRAP)))
     }
 
     private inner class Handler(val gen: Int, val prompt: String, val voice: String) : WebSocketListener() {
-        override fun onOpen(webSocket: WebSocket, response: Response) {
-            phase = "setup"
-            webSocket.send(LiveWire.setupCall(prompt, voice))
-            // The server must answer setup with setupComplete. No answer = a dead session; fail it visibly instead of waiting forever.
-            setupWatch?.cancel()
-            setupWatch = scope.launch { delay(SETUP_WAIT_MS); if (gen == generation && !ready) fail(gen, null, null, null, null, null) }
-        }
+        override fun onOpen(webSocket: WebSocket, response: Response) { webSocket.send(LiveWire.setupCall(prompt, voice)) }
         override fun onMessage(webSocket: WebSocket, text: String) = handle(gen, text)
         override fun onMessage(webSocket: WebSocket, bytes: ByteString) = handle(gen, bytes.utf8())
-        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { if (code != 1000) fail(gen, null, null, null, code, reason) else fail(gen, null, null, null, 1000, reason) }
+        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = down(gen, "closed $code", code != 1000)
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) =
-            fail(gen, t.javaClass.simpleName, t.message, response?.code, null, null)
+            down(gen, "failure ${t.javaClass.simpleName} ${response?.code ?: ""}", true, response?.code)
     }
 
     private fun handle(gen: Int, text: String) {
@@ -182,14 +158,14 @@ class LiveCall(
         val l = listener ?: return
         when {
             m.setupComplete -> {
-                ready = true; phase = "ready"; setupWatch?.cancel(); lastFailure = null; lastTechnical = null; diagnostics.log("call", "ready"); l.onReady()
+                ready = true; lastFailure = null; diagnostics.log("call", "ready"); l.onReady()
                 sink?.let { sk -> scope.launch { // restore earlier conversation context into a fresh session
                     val h = try { sk.history() } catch (_: Exception) { emptyList() }
                     if (h.isNotEmpty() && gen == generation) ws?.send(LiveWire.history(h))
                 } }
             }
-            m.error != null -> fail(gen, null, "server error", null, 1011, "server error")
-            m.goAway -> fail(gen, null, "goAway", null, 1001, "goAway")
+            m.error != null -> down(gen, "server error", false)
+            m.goAway -> down(gen, "goAway", true)
         }
         m.heard?.takeIf { it.isNotBlank() }?.let { if (heardAt == 0L) heardAt = android.os.SystemClock.elapsedRealtime() }
         if (m.audio.isNotEmpty() && heardAt != 0L) { onFirstAudioMs(android.os.SystemClock.elapsedRealtime() - heardAt); heardAt = 0L }
@@ -203,30 +179,26 @@ class LiveCall(
         m.heard?.takeIf { it.isNotBlank() }?.let(l::onHeard)
         m.said?.takeIf { it.isNotBlank() }?.let(l::onSaid)
         for (t in m.tools) scope.launch {
-            // Duplicate tool calls (same id) are executed once; a call must never run twice (two calls / two messages).
-            if (!handledTools.add(t.id)) { diagnostics.log("call", "duplicate tool call ignored: ${t.name}"); return@launch }
-            diagnostics.log("call", "tool call: ${t.name}")
-            val r = try { runTool(t.name, t.args) } catch (e: Exception) { "FAILED: ${e.javaClass.simpleName} ${e.message?.take(120).orEmpty()}" }
-            diagnostics.log("call", "tool result: ${t.name} len=${r.length}")
+            val r = try { runTool(t.name, t.args) } catch (e: Exception) { "failed" }
             if (gen == generation) ws?.send(LiveWire.toolResponse(t.id, t.name, r))
             if (t.name == "stop_listening" && gen == generation) { delay(1200); l.onEnded() }
         }
     }
 
-    /** The single failure path: classify -> keep technical detail for debug -> friendly text to the UI -> clean up this session. */
-    private fun fail(gen: Int, exception: String?, message: String?, httpCode: Int?, closeCode: Int?, closeReason: String?) {
+    private fun down(gen: Int, why: String, retryable: Boolean, httpCode: Int? = null) {
         if (gen != generation) return
-        if (closeCode == 1000 && exception == null) { // normal close requested by us or the server
-            stop(); listener?.onEnded(); return
-        }
-        val f = LiveFailureClassifier.classify(exception, message, httpCode, closeCode, closeReason, phase, networkUp())
-        diagnostics.log("call", "down: ${f.kind} ${f.technical}")
-        lastTechnical = f.technical
-        lastFailure = f.userText
+        diagnostics.log("call", "down: $why")
         val l = listener
-        sink?.onDown(f.userText)
+        val msg = when (httpCode) {
+            401, 403 -> "Live call: key ko Live API ki permission nahi."
+            404 -> "Live call model nahi mila."
+            429 -> "Live call ki limit poori (Gemini free key par Live ki limit chhoti hoti hai)."
+            else -> "Live call toot gayi ($why)."
+        }
+        lastFailure = msg
+        sink?.onDown(msg)
         stop()
-        l?.onFailed(f.userText, f.retryable)
+        l?.onFailed(msg, retryable && httpCode != 401 && httpCode != 403 && httpCode != 404 && httpCode != 429)
     }
 
     // ----------------------------- playback -----------------------------

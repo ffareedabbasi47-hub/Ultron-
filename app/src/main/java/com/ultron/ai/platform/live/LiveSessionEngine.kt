@@ -232,11 +232,11 @@ class LiveSessionEngine(
             com.ultron.ai.BuildConfig.CREATOR_NAME, s.responseStyle.wire, s.language.wire, "live", s.customRules,
         ) + " This is a live phone-style voice call: answer in one or two short spoken sentences, start immediately, deep calm menacing delivery with audible measured breaths between phrases, no lists or markdown."
         val listener = object : LiveCall.Listener {
-            override fun onReady() { retry.reset(); retryJob?.cancel(); _message.value = null; publishDiag { it.copy(note = "Live call: connected") } }
+            override fun onReady() { publishDiag { it.copy(note = "Live call: connected") } }
             override fun onSpeaking(speaking: Boolean) { move(if (speaking) LiveState.SPEAKING else LiveState.LISTENING) }
             override fun onHeard(text: String) { _heard.value = text; if (_state.value == LiveState.LISTENING) move(LiveState.USER_SPEECH) }
             override fun onSaid(text: String) {}
-            override fun onFailed(reason: String, retryable: Boolean) { callFailed(reason, retryable, listener = this, prompt = prompt, s = s) }
+            override fun onFailed(reason: String, retryable: Boolean) { callFailed(reason) }
             override fun onEnded() { stop() }
         }
         // A session already running (typed chat) is reused: same socket, same context. Never a second session.
@@ -255,34 +255,13 @@ class LiveSessionEngine(
         call?.sendMic(frame)
     }
 
-    private val retry = com.ultron.ai.domain.live.LiveRetryPolicy()
-    private var retryJob: Job? = null
-
-    /**
-     * Controlled recovery: the failed session is already cleaned up by LiveCall. A retryable failure reconnects with bounded
-     * exponential backoff (max 4 tries, then it stops and says so); the microphone stays open so listening resumes the moment
-     * the new session is ready. Never another AI engine, never a second parallel session (LiveCall.start closes any old one).
-     */
-    private fun callFailed(reason: String, retryable: Boolean, listener: LiveCall.Listener, prompt: String, s: UltronSettings) {
+    private fun callFailed(reason: String) {
         scope.launch {
             if (!inCall) return@launch
-            val wait = if (retryable) retry.next() else null
-            if (wait == null) {
-                stop()
-                _message.value = if (retryable) "Live connection nahi ho paya ($reason). Dobara mic dabao ya wake bolo."
-                                 else "$reason Live band hai; theek karke dobara mic dabao ya wake bolo."
-                diagnostics.log("live", "live call stopped (no fallback, retries used=${retry.attempts}): $reason")
-                return@launch
-            }
-            _message.value = "${com.ultron.ai.domain.live.LiveStatus.RECONNECTING.text} (${retry.attempts}/4)"
-            diagnostics.log("live", "reconnect ${retry.attempts}/4 in ${wait}ms: $reason")
-            retryJob?.cancel()
-            retryJob = scope.launch {
-                delay(wait)
-                if (!inCall || call == null) return@launch
-                if (call.isActive) return@launch // a session already exists: never a duplicate
-                call.start(listener, prompt, s.cloudVoiceName, s.ttsVolume, s.fullDuplex)
-            }
+            // Honest failure: no silent switch to another AI engine. The reason stays on screen; the user restarts Live themselves.
+            stop()
+            _message.value = "$reason Live band hai; dobara mic dabao ya wake bolo."
+            diagnostics.log("live", "live call failed, stopped (no fallback): $reason")
         }
     }
 
@@ -529,7 +508,6 @@ class LiveSessionEngine(
         processor?.cancel(); ticker?.cancel(); watcher?.cancel()
         processor = null; ticker = null; watcher = null
         mic.stop(); liveStt?.close(); streaming = false
-        retryJob?.cancel(); retry.reset()
         endCall(); forceNormal = false
         turns.cancel()
         utterances.tryReceive()
@@ -554,9 +532,6 @@ class LiveSessionEngine(
         val ownSpeech = tts.isActive() || _state.value == LiveState.SPEAKING || now() - lastOwnSpeechMs < 2000
         diagnostics.log("live", "focus $ev ownSpeech=$ownSpeech")
         if (ownSpeech) return
-        // Another app starting music/video takes focus: the Live session must NOT stop for that. Real phone calls are handled by
-        // the telephony-state poller (CallSilence), not by focus events.
-        if (inCall) { diagnostics.log("live", "focus lost to another app: Live continues"); return }
         if (ev == com.ultron.ai.voice.AudioSessionManager.FocusEvent.LOST_PERMANENT ||
             ev == com.ultron.ai.voice.AudioSessionManager.FocusEvent.LOST_TRANSIENT) {
             _message.value = "Doosri audio/call ne focus liya, isliye Live pause hua. Mic button se dobara chalao."

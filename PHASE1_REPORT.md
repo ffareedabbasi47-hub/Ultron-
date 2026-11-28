@@ -159,3 +159,6 @@ Tests: 166/166 JVM logic OK. Android build NOT run here; no device tests.
 - `LiveCall`: connect/write 15 s, 15 s setup watchdog, single `fail()` path, technical detail only in diagnostics (`lastTechnical`), real network check, first-mic-chunk log.
 - `LiveSessionEngine`: bounded reconnect, mic stays open, no duplicate session, no fallback to another AI; stops honestly after the last try.
 - Tests: LiveFailureTest (8). Total 174/174 JVM. NOT built for Android, NOT device-tested.
+
+## Update 16 (v18) - Live core restored to v14
+User asked to return the Live system to its state 3 versions earlier (v14) because v17 failed. LiveCall, LiveSessionEngine, AndroidAudioSessionManager restored from v14; v17 failure classifier/reconnect removed. Only `lastFailure` kept so the Capability Registry compiles. LiveWire optional-param fix and WhatsApp work (v15/v16) kept.
